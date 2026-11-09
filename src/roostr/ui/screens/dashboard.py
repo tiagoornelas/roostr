@@ -26,11 +26,17 @@ class JobListItem(ListItem):
 
     def compose(self) -> ComposeResult:
         if self.job.is_paused:
-            badge = f"[dim]{self.msg.status_paused}[/]"
+            status_dot = "[dim]●[/]"
+            badge_markup = f"[dim]{self.msg.status_paused}[/]"
+            name_markup = f"[dim]{self.job.name}[/]"
         elif self.ran_today:
-            badge = f"[bold green]{self.msg.status_running_today}[/]"
+            status_dot = "[bold green]●[/]"
+            badge_markup = f"[bold green]{self.msg.status_running_today}[/]"
+            name_markup = f"[bold]{self.job.name}[/]"
         else:
-            badge = f"[bold yellow]{self.msg.status_waiting}[/]"
+            status_dot = "[bold yellow]●[/]"
+            badge_markup = f"[bold yellow]{self.msg.status_waiting}[/]"
+            name_markup = f"[bold]{self.job.name}[/]"
 
         sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
         if len(self.job.schedule.days_of_week) == 5 and self.job.schedule.days_of_week == (0, 1, 2, 3, 4):
@@ -40,18 +46,20 @@ class JobListItem(ListItem):
         else:
             days_str = f"{len(self.job.schedule.days_of_week)}d"
 
-        target_icon = "💻"
+        target_name = "Herdr"
         if isinstance(self.job.target, HerdrTargetConfig):
-            target_icon = "🐑"
+            target_name = f"Herdr ({self.job.target.space})" if self.job.target.space else "Herdr"
         elif isinstance(self.job.target, BackgroundTargetConfig):
-            target_icon = "⚙️"
+            target_name = "Background"
+        elif isinstance(self.job.target, TerminalTargetConfig):
+            target_name = "Terminal"
 
         with Horizontal(classes="job-card-top"):
-            yield Label(f"[bold]{target_icon} {self.job.name}[/]", classes="job-card-name")
-            yield Label(badge, classes="job-card-badge")
+            yield Label(f"{status_dot} {name_markup}", classes="job-card-name")
+            yield Label(badge_markup, classes="job-card-badge")
         with Horizontal(classes="job-card-sub"):
             yield Label(
-                f"[dim]{days_str} {sched_str}[/] • [bold]{self.run_count}[/] [dim]runs[/]",
+                f"[dim]{days_str} {sched_str} • {target_name}[/]",
                 classes="job-card-details",
             )
 
@@ -97,26 +105,27 @@ class DashboardScreen(Screen):
         background-tint: transparent 0%;
     }
 
-    JobListItem {
+    #jobs-list > JobListItem {
         height: auto;
-        padding: 1 1;
-        border-bottom: solid $panel;
+        padding: 0 1;
+        margin: 1 1 0 1;
         background: transparent;
+        border: round $panel;
         color: $foreground;
     }
 
-    JobListItem:hover,
-    JobListItem.-hovered {
+    #jobs-list > JobListItem:hover,
+    #jobs-list > JobListItem.-hovered {
         background: $panel;
     }
 
-    ListView > JobListItem.-highlight,
-    ListView:focus > JobListItem.-highlight,
-    JobListItem.-selected,
-    JobListItem:focus {
+    #jobs-list > JobListItem.-highlight,
+    #jobs-list:focus > JobListItem.-highlight,
+    #jobs-list > JobListItem.-selected,
+    #jobs-list > JobListItem:focus {
         background: $panel;
         color: $foreground;
-        border-left: wide $primary;
+        border: round $primary;
     }
 
     .job-card-top {
@@ -127,7 +136,6 @@ class DashboardScreen(Screen):
     .job-card-name {
         width: 1fr;
         color: $foreground;
-        text-style: bold;
     }
 
     .job-card-badge {
@@ -141,6 +149,7 @@ class DashboardScreen(Screen):
 
     .job-card-details {
         color: $secondary;
+        padding-left: 2;
     }
 
     #inspector {
