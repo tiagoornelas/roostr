@@ -55,10 +55,11 @@ def test_install_and_uninstall(sample_job, tmp_path):
 
     plist_path = adapter.install(sample_job)
     assert plist_path.exists()
-    assert runner_mock.call_count == 1
-    args = runner_mock.call_args[0][0]
-    assert "launchctl" in args
-    assert "load" in args
+    assert runner_mock.call_count == 2
+    unload_args = runner_mock.call_args_list[0][0][0]
+    load_args = runner_mock.call_args_list[1][0][0]
+    assert "launchctl" in unload_args and "unload" in unload_args
+    assert "launchctl" in load_args and "load" in load_args
 
     runner_mock.reset_mock()
     adapter.uninstall("review-pr")

@@ -26,12 +26,12 @@ class LaunchdSchedulerAdapter(SchedulerPort):
         self._cmd_runner = cmd_runner or subprocess.run
 
     def _discover_binary(self) -> Path:
-        found = shutil.which("roostr")
-        if found:
-            return Path(found)
         local_bin = Path.home() / ".local" / "bin" / "roostr"
         if local_bin.exists():
             return local_bin
+        found = shutil.which("roostr")
+        if found:
+            return Path(found)
         return Path("/usr/local/bin/roostr")
 
     def get_label(self, job_id: str) -> str:
@@ -82,6 +82,10 @@ class LaunchdSchedulerAdapter(SchedulerPort):
         xml = self.generate_plist_xml(job)
         plist_path.write_text(xml, encoding="utf-8")
 
+        try:
+            self._cmd_runner(["launchctl", "unload", "-w", str(plist_path)])
+        except Exception:
+            pass
         self._cmd_runner(["launchctl", "load", "-w", str(plist_path)])
         return plist_path
 
