@@ -69,6 +69,28 @@ class Job:
     sentinel_pattern: str | None = None
     is_paused: bool = False
     created_at: datetime = field(default_factory=datetime.now)
+    folder: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.folder:
+            parts = [p.strip() for p in self.folder.strip().strip("/").split("/") if p.strip()]
+            if len(parts) > 2:
+                raise ValueError(f"Folder hierarchy cannot exceed 2 levels (got '{self.folder}')")
+            self.folder = "/".join(parts) if parts else None
+
+    @property
+    def root_folder(self) -> str | None:
+        if not self.folder:
+            return None
+        parts = self.folder.split("/")
+        return parts[0] if parts else None
+
+    @property
+    def subfolder(self) -> str | None:
+        if not self.folder:
+            return None
+        parts = self.folder.split("/")
+        return parts[1] if len(parts) > 1 else None
 
     def resolve_sentinel_path(self, dt: datetime) -> str | None:
         if not self.sentinel_pattern:

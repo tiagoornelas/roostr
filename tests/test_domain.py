@@ -87,3 +87,58 @@ def test_target_configs():
 
     bg_target = BackgroundTargetConfig(notify_on_complete=True)
     assert bg_target.target_type == TargetType.BACKGROUND
+
+
+def test_job_folder_hierarchy():
+    import pytest
+
+    # Root job without folder
+    job_none = Job(
+        id="test-1",
+        name="Test 1",
+        cwd="/tmp",
+        command="echo",
+        schedule=SchedulePolicy(days_of_week=(0,), time_of_day=time(8, 0)),
+        target=BackgroundTargetConfig(),
+        folder=None,
+    )
+    assert job_none.root_folder is None
+    assert job_none.subfolder is None
+
+    # Level 1 folder
+    job_l1 = Job(
+        id="test-2",
+        name="Test 2",
+        cwd="/tmp",
+        command="echo",
+        schedule=SchedulePolicy(days_of_week=(0,), time_of_day=time(8, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Work",
+    )
+    assert job_l1.root_folder == "Work"
+    assert job_l1.subfolder is None
+
+    # Level 2 folder
+    job_l2 = Job(
+        id="test-3",
+        name="Test 3",
+        cwd="/tmp",
+        command="echo",
+        schedule=SchedulePolicy(days_of_week=(0,), time_of_day=time(8, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Work/Reports",
+    )
+    assert job_l2.root_folder == "Work"
+    assert job_l2.subfolder == "Reports"
+
+    # More than 2 levels raises ValueError
+    with pytest.raises(ValueError, match="cannot exceed 2 levels"):
+        Job(
+            id="test-4",
+            name="Test 4",
+            cwd="/tmp",
+            command="echo",
+            schedule=SchedulePolicy(days_of_week=(0,), time_of_day=time(8, 0)),
+            target=BackgroundTargetConfig(),
+            folder="Work/Reports/Deep",
+        )

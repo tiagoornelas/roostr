@@ -45,6 +45,7 @@ class Messages:
     lbl_tolerance_mode: str
     lbl_tolerance_val: str
     lbl_sentinel: str
+    lbl_folder: str
     btn_save: str
     btn_cancel: str
 

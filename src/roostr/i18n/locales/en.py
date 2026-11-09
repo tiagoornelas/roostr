@@ -35,6 +35,7 @@ EN_MESSAGES = Messages(
     lbl_tolerance_mode="Tolerance Policy:",
     lbl_tolerance_val="Tolerance Limit (e.g. 12 for 12:00, or 4 for 4h):",
     lbl_sentinel="Optional Sentinel File (leave empty if none):",
+    lbl_folder="Folder / Subfolder (e.g. Work or Work/Reports):",
     btn_save="Save (Ctrl+S)",
     btn_cancel="Cancel (Esc)",
     key_settings="Settings",

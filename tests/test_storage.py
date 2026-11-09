@@ -94,3 +94,22 @@ def test_record_execution_and_idempotency(storage):
     assert storage.count_executions("job1") == 1
     assert storage.has_succeeded_on_date("job1", date(2026, 11, 9)) is True
     assert storage.has_succeeded_on_date("job1", date(2026, 11, 10)) is False
+
+
+def test_save_and_retrieve_job_with_folder(storage):
+    job = Job(
+        id="folder-job",
+        name="Folder Job",
+        cwd="/tmp",
+        command="echo folder",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Engineering/Backend",
+    )
+    storage.save_job(job)
+
+    fetched = storage.get_job("folder-job")
+    assert fetched is not None
+    assert fetched.folder == "Engineering/Backend"
+    assert fetched.root_folder == "Engineering"
+    assert fetched.subfolder == "Backend"

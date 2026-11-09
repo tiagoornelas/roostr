@@ -35,6 +35,7 @@ ES_MESSAGES = Messages(
     lbl_tolerance_mode="Política de Tolerancia:",
     lbl_tolerance_val="Límite de Tolerancia (ej: 12 para hasta 12:00, o 4 para 4h):",
     lbl_sentinel="Archivo Centinela Opcional (vacío si no hay):",
+    lbl_folder="Carpeta / Subcarpeta (ej: Work o Work/Reports):",
     btn_save="Guardar (Ctrl+S)",
     btn_cancel="Cancelar (Esc)",
     key_settings="Ajustes",

@@ -51,7 +51,8 @@ class SQLiteStorage:
                     target_config TEXT NOT NULL,
                     sentinel_pattern TEXT,
                     is_paused INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    folder TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS executions (
@@ -68,6 +69,11 @@ class SQLiteStorage:
                 ON executions(job_id, timestamp, status);
             """)
 
+            cursor = conn.execute("PRAGMA table_info(jobs)")
+            columns = [c[1] for c in cursor.fetchall()]
+            if "folder" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN folder TEXT")
+
     def save_job(self, job: Job) -> None:
         target_dict = self._target_to_dict(job.target)
         with self._connection() as conn:
@@ -76,8 +82,8 @@ class SQLiteStorage:
                 INSERT INTO jobs (
                     id, name, cwd, command, days_of_week, time_of_day,
                     tolerance_mode, tolerance_value, target_type, target_config,
-                    sentinel_pattern, is_paused, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sentinel_pattern, is_paused, created_at, folder
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cwd = excluded.cwd,
@@ -89,7 +95,8 @@ class SQLiteStorage:
                     target_type = excluded.target_type,
                     target_config = excluded.target_config,
                     sentinel_pattern = excluded.sentinel_pattern,
-                    is_paused = excluded.is_paused
+                    is_paused = excluded.is_paused,
+                    folder = excluded.folder
                 """,
                 (
                     job.id,
@@ -105,6 +112,7 @@ class SQLiteStorage:
                     job.sentinel_pattern,
                     1 if job.is_paused else 0,
                     job.created_at.isoformat(),
+                    job.folder,
                 ),
             )
 
@@ -247,6 +255,7 @@ class SQLiteStorage:
             tolerance_value=row["tolerance_value"],
         )
         target = self._dict_to_target(row["target_type"], json.loads(row["target_config"]))
+        folder = row["folder"] if "folder" in row.keys() and row["folder"] else None
         return Job(
             id=row["id"],
             name=row["name"],
@@ -257,4 +266,5 @@ class SQLiteStorage:
             sentinel_pattern=row["sentinel_pattern"],
             is_paused=bool(row["is_paused"]),
             created_at=datetime.fromisoformat(row["created_at"]),
+            folder=folder,
         )

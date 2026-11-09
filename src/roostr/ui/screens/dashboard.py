@@ -1,5 +1,8 @@
+import re
+import subprocess
 from datetime import date
 
+from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
@@ -9,6 +12,7 @@ from roostr.application.ports import JobRepositoryPort
 from roostr.domain.enums import ExecutionStatus
 from roostr.domain.models import (
     BackgroundTargetConfig,
+    ExecutionRecord,
     HerdrTargetConfig,
     Job,
     TerminalTargetConfig,
@@ -17,12 +21,17 @@ from roostr.i18n.schema import Messages
 
 
 class JobListItem(ListItem):
-    def __init__(self, job: Job, ran_today: bool, run_count: int, msg: Messages):
+    def __init__(self, job: Job, ran_today: bool, run_count: int, msg: Messages, indent: int = 0):
         super().__init__()
         self.job = job
         self.ran_today = ran_today
         self.run_count = run_count
         self.msg = msg
+        self.indent = indent
+        if indent == 1:
+            self.add_class("indent-1")
+        elif indent >= 2:
+            self.add_class("indent-2")
 
     def compose(self) -> ComposeResult:
         if self.job.is_paused:
@@ -64,6 +73,92 @@ class JobListItem(ListItem):
             )
 
 
+class FolderHeaderItem(ListItem):
+    def __init__(self, folder_name: str, count: int, is_collapsed: bool):
+        super().__init__()
+        self.folder_name = folder_name
+        self.count = count
+        self.is_collapsed = is_collapsed
+
+    def compose(self) -> ComposeResult:
+        arrow = "▶" if self.is_collapsed else "▼"
+        with Horizontal(classes="folder-header-row"):
+            yield Label(f"[bold]{arrow} {self.folder_name.upper()}[/]", classes="folder-header-title")
+            yield Label(f"[dim]{self.count}[/]", classes="folder-header-badge")
+
+
+class SubfolderHeaderItem(ListItem):
+    def __init__(self, subfolder_key: str, subfolder_name: str, count: int, is_collapsed: bool):
+        super().__init__()
+        self.subfolder_key = subfolder_key
+        self.subfolder_name = subfolder_name
+        self.count = count
+        self.is_collapsed = is_collapsed
+
+    def compose(self) -> ComposeResult:
+        arrow = "▶" if self.is_collapsed else "▼"
+        with Horizontal(classes="subfolder-header-row"):
+            yield Label(f"  [dim]{arrow}[/] [bold]{self.subfolder_name}[/]", classes="subfolder-header-title")
+            yield Label(f"[dim]{self.count}[/]", classes="subfolder-header-badge")
+
+
+class ExecutionRow(Static):
+    DEFAULT_CSS = """
+    ExecutionRow {
+        height: auto;
+        padding: 0 1;
+        margin: 0 0 1 0;
+        background: transparent;
+        border-left: solid transparent;
+    }
+
+    ExecutionRow:hover {
+        background: $panel;
+        border-left: solid $primary;
+    }
+    """
+
+    def __init__(
+        self,
+        record: ExecutionRecord,
+        cleaned_details: str,
+        attach_cmd: str | None,
+        msg: Messages,
+    ):
+        super().__init__()
+        self.record = record
+        self.cleaned_details = cleaned_details
+        self.attach_cmd = attach_cmd
+        self.msg = msg
+
+    def on_mount(self) -> None:
+        ts = self.record.timestamp.strftime("%d/%m %H:%M:%S")
+        color = "green" if self.record.status == ExecutionStatus.SUCCESS else "yellow"
+        if self.record.status == ExecutionStatus.FAILED:
+            color = "red"
+
+        copy_hint = "  [dim cyan](click to copy session)[/]" if self.attach_cmd else ""
+        self.update(
+            f"[dim]{ts}[/] [{color}]{self.record.status.value}[/] ([dim]{self.record.trigger_type.value}[/]): {self.cleaned_details}{copy_hint}"
+        )
+
+    def on_click(self, event: events.Click) -> None:
+        to_copy = self.attach_cmd or self.record.details
+        try:
+            subprocess.run(["pbcopy"], input=to_copy.encode("utf-8"), check=True)
+        except Exception:
+            pass
+        try:
+            self.app.copy_to_clipboard(to_copy)
+        except Exception:
+            pass
+
+        if self.attach_cmd:
+            self.app.notify(f"Copied: {self.attach_cmd}", title="Attach Command")
+        else:
+            self.app.notify("Copied log details to clipboard", title="Log")
+
+
 class DashboardScreen(Screen):
     DEFAULT_CSS = """
     DashboardScreen {
@@ -95,6 +190,77 @@ class DashboardScreen(Screen):
         background-tint: transparent 0%;
     }
 
+    #jobs-list > FolderHeaderItem {
+        height: 1;
+        padding: 0 1;
+        margin: 1 1 0 1;
+        background: $panel;
+        color: $foreground;
+        border: none;
+    }
+
+    #jobs-list > FolderHeaderItem:hover {
+        background: $primary 20%;
+    }
+
+    #jobs-list > FolderHeaderItem.-highlight {
+        background: $panel;
+        color: $foreground;
+        border-left: thick $primary;
+    }
+
+    .folder-header-row {
+        height: 1;
+        align: left middle;
+    }
+
+    .folder-header-title {
+        width: 1fr;
+        text-style: bold;
+        color: $foreground;
+    }
+
+    .folder-header-badge {
+        width: auto;
+        color: $secondary;
+        padding: 0 1;
+    }
+
+    #jobs-list > SubfolderHeaderItem {
+        height: 1;
+        padding: 0 1 0 2;
+        margin: 1 1 0 1;
+        background: transparent;
+        color: $secondary;
+        border: none;
+    }
+
+    #jobs-list > SubfolderHeaderItem:hover {
+        background: $panel;
+    }
+
+    #jobs-list > SubfolderHeaderItem.-highlight {
+        background: $panel;
+        color: $foreground;
+        border-left: tall $primary;
+    }
+
+    .subfolder-header-row {
+        height: 1;
+        align: left middle;
+    }
+
+    .subfolder-header-title {
+        width: 1fr;
+        color: $secondary;
+    }
+
+    .subfolder-header-badge {
+        width: auto;
+        color: $secondary;
+        padding: 0 1;
+    }
+
     #jobs-list > JobListItem {
         height: auto;
         padding: 0 1;
@@ -102,6 +268,14 @@ class DashboardScreen(Screen):
         background: transparent;
         border: round $panel;
         color: $foreground;
+    }
+
+    #jobs-list > JobListItem.indent-1 {
+        margin: 1 1 0 2;
+    }
+
+    #jobs-list > JobListItem.indent-2 {
+        margin: 1 1 0 4;
     }
 
     #jobs-list > JobListItem:hover,
@@ -150,9 +324,14 @@ class DashboardScreen(Screen):
         color: $foreground;
     }
 
-    #inspector-content {
+    #inspector-details {
         background: $background;
         color: $foreground;
+    }
+
+    #inspector-history {
+        margin-top: 1;
+        height: auto;
     }
 
     #bottom-bar {
@@ -183,6 +362,8 @@ class DashboardScreen(Screen):
         self.msg = messages
         self.active_theme = theme_name
         self.selected_job: Job | None = None
+        self.collapsed_folders: set[str] = set()
+        self.collapsed_subfolders: set[str] = set()
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-content"):
@@ -190,7 +371,8 @@ class DashboardScreen(Screen):
                 yield ListView(id="jobs-list")
 
             with VerticalScroll(id="inspector"):
-                yield Static(id="inspector-content")
+                yield Static(id="inspector-details")
+                yield Vertical(id="inspector-history")
 
         with Horizontal(id="bottom-bar"):
             yield Label("🐓 roostr", id="footer-brand")
@@ -213,24 +395,107 @@ class DashboardScreen(Screen):
         jobs_list.clear()
 
         jobs = self.storage.list_jobs()
-        target_index = 0
-
         today = date.today()
-        for idx, job in enumerate(jobs):
+
+        root_jobs: list[Job] = []
+        folder_tree: dict[str, dict] = {}
+
+        for job in jobs:
+            if not job.folder:
+                root_jobs.append(job)
+            else:
+                rf = job.root_folder or "Other"
+                sf = job.subfolder
+                if rf not in folder_tree:
+                    folder_tree[rf] = {"direct": [], "subfolders": {}}
+                if sf:
+                    if sf not in folder_tree[rf]["subfolders"]:
+                        folder_tree[rf]["subfolders"][sf] = []
+                    folder_tree[rf]["subfolders"][sf].append(job)
+                else:
+                    folder_tree[rf]["direct"].append(job)
+
+        items_to_add: list[ListItem] = []
+        job_index_map: dict[str, int] = {}
+
+        # 1. Root jobs first
+        for job in root_jobs:
             ran_today = self.storage.has_succeeded_on_date(job.id, today)
             run_count = self.storage.count_executions(job.id)
-            item = JobListItem(job, ran_today, run_count, self.msg)
-            jobs_list.append(item)
-            if selected_job_id and job.id == selected_job_id:
-                target_index = idx
+            item = JobListItem(job, ran_today, run_count, self.msg, indent=0)
+            job_index_map[job.id] = len(items_to_add)
+            items_to_add.append(item)
 
-        if jobs:
-            jobs_list.index = target_index
-            self.show_job_details(jobs[target_index])
+        # 2. Folders and Subfolders
+        for rf in sorted(folder_tree.keys()):
+            data = folder_tree[rf]
+            is_rf_collapsed = rf in self.collapsed_folders
+            count_rf = len(data["direct"]) + sum(len(j) for j in data["subfolders"].values())
+            items_to_add.append(FolderHeaderItem(rf, count_rf, is_rf_collapsed))
+
+            if not is_rf_collapsed:
+                for job in data["direct"]:
+                    ran_today = self.storage.has_succeeded_on_date(job.id, today)
+                    run_count = self.storage.count_executions(job.id)
+                    item = JobListItem(job, ran_today, run_count, self.msg, indent=1)
+                    job_index_map[job.id] = len(items_to_add)
+                    items_to_add.append(item)
+
+                for sf in sorted(data["subfolders"].keys()):
+                    sf_jobs = data["subfolders"][sf]
+                    sf_key = f"{rf}/{sf}"
+                    is_sf_collapsed = sf_key in self.collapsed_subfolders
+                    count_sf = len(sf_jobs)
+                    items_to_add.append(SubfolderHeaderItem(sf_key, sf, count_sf, is_sf_collapsed))
+
+                    if not is_sf_collapsed:
+                        for job in sf_jobs:
+                            ran_today = self.storage.has_succeeded_on_date(job.id, today)
+                            run_count = self.storage.count_executions(job.id)
+                            item = JobListItem(job, ran_today, run_count, self.msg, indent=2)
+                            job_index_map[job.id] = len(items_to_add)
+                            items_to_add.append(item)
+
+        for item in items_to_add:
+            jobs_list.append(item)
+
+        target_idx: int | None = None
+        if selected_job_id and selected_job_id in job_index_map:
+            target_idx = job_index_map[selected_job_id]
+        elif job_index_map:
+            first_job_id = next(iter(job_index_map.keys()))
+            target_idx = job_index_map[first_job_id]
+
+        if target_idx is not None:
+            jobs_list.index = target_idx
+            selected_item = items_to_add[target_idx]
+            if isinstance(selected_item, JobListItem):
+                self.show_job_details(selected_item.job)
         else:
             self.selected_job = None
-            inspector_content = self.query_one("#inspector-content", Static)
-            inspector_content.update(f"[dim]{self.msg.empty_state_text}[/]")
+            inspector_details = self.query_one("#inspector-details", Static)
+            inspector_details.update(f"[dim]{self.msg.empty_state_text}[/]")
+            history_container = self.query_one("#inspector-history", Vertical)
+            history_container.remove_children()
+
+    @on(ListView.Selected, "#jobs-list")
+    def on_item_selected(self, event: ListView.Selected) -> None:
+        if isinstance(event.item, FolderHeaderItem):
+            rf = event.item.folder_name
+            if rf in self.collapsed_folders:
+                self.collapsed_folders.remove(rf)
+            else:
+                self.collapsed_folders.add(rf)
+            self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
+        elif isinstance(event.item, SubfolderHeaderItem):
+            sf_key = event.item.subfolder_key
+            if sf_key in self.collapsed_subfolders:
+                self.collapsed_subfolders.remove(sf_key)
+            else:
+                self.collapsed_subfolders.add(sf_key)
+            self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
+        elif isinstance(event.item, JobListItem):
+            self.show_job_details(event.item.job)
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and isinstance(event.item, JobListItem):
@@ -267,7 +532,6 @@ class DashboardScreen(Screen):
             )
 
         # Format semantic days
-        is_en = self.msg.locale == "en"
         days_names_en = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
         days_names_pt = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
         days_names_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
@@ -307,35 +571,7 @@ class DashboardScreen(Screen):
             target_str = "Background Process (Headless)"
 
         sentinel_info = job.sentinel_pattern or "[dim]None (standard database idempotency)[/]"
-
-        # Execution history & session detection
-        import re
-
-        self.latest_session_command = None
-        history_lines = []
-        if recent_records:
-            for rec in recent_records:
-                ts = rec.timestamp.strftime("%d/%m %H:%M:%S")
-                color = "green" if rec.status == ExecutionStatus.SUCCESS else "yellow"
-                if rec.status == ExecutionStatus.FAILED:
-                    color = "red"
-
-                # Detect session ID for quick jump
-                if not self.latest_session_command:
-                    match = re.search(r"\b(tb[a-f0-9]{20,})\b", rec.details)
-                    if match:
-                        self.latest_session_command = f"hc attach {match.group(1)}"
-
-                # Clean raw hash from details for human-readable display
-                cleaned = re.sub(r"\btb[a-f0-9]{20,}\b\s*", "", rec.details)
-                cleaned = re.sub(r"in tab\s+\('", "in ('", cleaned)
-                history_lines.append(
-                    f"[dim]{ts}[/] [{color}]{rec.status.value}[/] ([dim]{rec.trigger_type.value}[/]): {cleaned}"
-                )
-        else:
-            history_lines.append("[dim]No executions recorded yet.[/]")
-
-        history_rendered = "\n".join(history_lines)
+        folder_info = f"[dim]Folder:[/]    [bold]{job.folder}[/]\n" if job.folder else ""
 
         primary_color = (
             self.app.current_theme.primary
@@ -343,10 +579,10 @@ class DashboardScreen(Screen):
             else "#ffffff"
         )
 
-        content = f"""
+        details_markup = f"""
 [bold size=14]{job.name}[/]  {status_text}
 [dim]ID: {job.id} • Created: {job.created_at.strftime("%Y-%m-%d")} • Total runs: [bold]{total_runs}[/][/]
-
+{folder_info}
 [bold {primary_color}]{self.msg.inspector_target}[/]
 [bold]{target_str}[/]
 
@@ -361,6 +597,20 @@ class DashboardScreen(Screen):
 [dim]Sentinel:[/]  [bold]{sentinel_info}[/]
 
 [bold {primary_color}]{self.msg.inspector_history}[/]
-{history_rendered}
 """
-        self.query_one("#inspector-content", Static).update(content)
+        self.query_one("#inspector-details", Static).update(details_markup)
+
+        history_container = self.query_one("#inspector-history", Vertical)
+        history_container.remove_children()
+
+        if recent_records:
+            for rec in recent_records:
+                match = re.search(r"\b(tb[a-f0-9]{20,})\b", rec.details)
+                attach_cmd = f"hc attach {match.group(1)}" if match else None
+
+                cleaned = re.sub(r"\btb[a-f0-9]{20,}\b\s*", "", rec.details)
+                cleaned = re.sub(r"in tab\s+\('", "in ('", cleaned)
+
+                history_container.mount(ExecutionRow(rec, cleaned, attach_cmd, self.msg))
+        else:
+            history_container.mount(Label("[dim]No executions recorded yet.[/]"))
