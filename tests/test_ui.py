@@ -196,44 +196,48 @@ async def test_app_folder_and_subfolder_accordion(storage):
         dashboard = app.screen
         assert isinstance(dashboard, DashboardScreen)
 
-        # Verify initial items: Root Job, Folder WORK, Work Job, Subfolder Reports, Report Job
+        # Verify initial items: Folders first, Ungrouped jobs LAST
         list_view = dashboard.query_one("#jobs-list")
         items = list(list_view.children)
-        assert len(items) == 5
-        assert isinstance(items[0], JobListItem)  # Root job
-        assert isinstance(items[1], FolderHeaderItem)  # Work folder
-        assert items[1].folder_name == "Work"
-        assert items[1].count == 2
-        assert isinstance(items[2], JobListItem)  # Work Job
-        assert isinstance(items[3], SubfolderHeaderItem)  # Reports subfolder
-        assert items[3].subfolder_name == "Reports"
-        assert items[3].count == 1
-        assert isinstance(items[4], JobListItem)  # Report Job
+        assert len(items) == 6
+        assert isinstance(items[0], FolderHeaderItem)  # Work folder
+        assert items[0].folder_name == "Work"
+        assert items[0].count == 2
+        assert isinstance(items[1], JobListItem)  # Work Job
+        assert isinstance(items[2], SubfolderHeaderItem)  # Reports subfolder
+        assert items[2].subfolder_name == "Reports"
+        assert items[2].count == 1
+        assert isinstance(items[3], JobListItem)  # Report Job
+        from roostr.ui.screens.dashboard import UngroupedHeaderItem
+
+        assert isinstance(items[4], UngroupedHeaderItem)
+        assert isinstance(items[5], JobListItem)  # Root job
 
         # Click FolderHeaderItem to collapse Work
         await pilot.click(FolderHeaderItem)
         await pilot.pause()
 
-        # After collapsing root folder Work: only Root Job and FolderHeaderItem remain
+        # After collapsing root folder Work: FolderHeaderItem, UngroupedHeaderItem, Root Job remain
         items_collapsed = list(list_view.children)
-        assert len(items_collapsed) == 2
-        assert isinstance(items_collapsed[0], JobListItem)
-        assert isinstance(items_collapsed[1], FolderHeaderItem)
-        assert items_collapsed[1].is_collapsed is True
+        assert len(items_collapsed) == 3
+        assert isinstance(items_collapsed[0], FolderHeaderItem)
+        assert items_collapsed[0].is_collapsed is True
+        assert isinstance(items_collapsed[1], UngroupedHeaderItem)
+        assert isinstance(items_collapsed[2], JobListItem)
 
         # Click FolderHeaderItem again to expand
         await pilot.click(FolderHeaderItem)
         await pilot.pause()
-        assert len(list_view.children) == 5
+        assert len(list_view.children) == 6
 
         # Click SubfolderHeaderItem to collapse only Reports subfolder
         await pilot.click(SubfolderHeaderItem)
         await pilot.pause()
         items_sub_collapsed = list(list_view.children)
-        # Root Job, Folder WORK, Work Job, Subfolder Reports (Report Job is hidden)
-        assert len(items_sub_collapsed) == 4
-        assert isinstance(items_sub_collapsed[3], SubfolderHeaderItem)
-        assert items_sub_collapsed[3].is_collapsed is True
+        # Folder WORK, Work Job, Subfolder Reports (Report Job is hidden), UngroupedHeaderItem, Root Job
+        assert len(items_sub_collapsed) == 5
+        assert isinstance(items_sub_collapsed[2], SubfolderHeaderItem)
+        assert items_sub_collapsed[2].is_collapsed is True
 
 
 @pytest.mark.asyncio
@@ -274,3 +278,45 @@ async def test_app_execution_row_click_copies_session(storage, sample_job, monke
         await pilot.pause()
 
         assert "hc attach tb67c2d071c57613cb47463761c70ee3e1" in copied
+
+
+@pytest.mark.asyncio
+async def test_app_action_move_job_and_new_folder(storage, sample_job):
+    from roostr.ui.screens.folder_modal import NewFolderModal
+    from roostr.ui.screens.move_modal import MoveJobModal
+
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.dashboard_screen.selected_job.id == sample_job.id
+
+        # 1. Press 'f' to open NewFolderModal
+        await pilot.press("f")
+        await pilot.pause()
+        assert isinstance(app.screen, NewFolderModal)
+
+        # Type new folder name and submit
+        inp = app.screen.query_one("#inp-folder-name")
+        inp.value = "Ops/Deploy"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert "Ops" in storage.list_folders()
+        assert "Ops/Deploy" in storage.list_folders()
+
+        # 2. Press 'm' to open MoveJobModal
+        await pilot.press("m")
+        await pilot.pause()
+        assert isinstance(app.screen, MoveJobModal)
+
+        # Select 'Ops/Deploy' in dest-list and press enter
+        dest_list = app.screen.query_one("#dest-list")
+        dest_list.index = 2
+        await pilot.press("enter")
+        await pilot.pause()
+
+        # Job is now moved to Ops/Deploy
+        updated_job = storage.get_job(sample_job.id)
+        assert updated_job.folder == "Ops/Deploy"

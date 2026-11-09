@@ -113,3 +113,42 @@ def test_save_and_retrieve_job_with_folder(storage):
     assert fetched.folder == "Engineering/Backend"
     assert fetched.root_folder == "Engineering"
     assert fetched.subfolder == "Backend"
+
+
+def test_storage_folder_operations(storage):
+    # Save folder
+    storage.save_folder("Finance")
+    storage.save_folder("Finance/Q4")
+    folders = storage.list_folders()
+    assert "Finance" in folders
+    assert "Finance/Q4" in folders
+
+    # Move job to folder
+    job = Job(
+        id="report-q4",
+        name="Q4 Report",
+        cwd="/tmp",
+        command="echo q4",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder=None,
+    )
+    storage.save_job(job)
+    assert storage.get_job("report-q4").folder is None
+
+    storage.move_job("report-q4", "Finance/Q4")
+    assert storage.get_job("report-q4").folder == "Finance/Q4"
+
+    # Cannot delete folder that contains jobs
+    with pytest.raises(ValueError, match="contains 1 job"):
+        storage.delete_folder("Finance")
+
+    # Move job back to root
+    storage.move_job("report-q4", None)
+    assert storage.get_job("report-q4").folder is None
+
+    # Now folder can be deleted
+    storage.delete_folder("Finance/Q4")
+    assert "Finance/Q4" not in storage.list_folders()
+    storage.delete_folder("Finance")
+    assert "Finance" not in storage.list_folders()

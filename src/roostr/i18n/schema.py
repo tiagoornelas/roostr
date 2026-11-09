@@ -10,6 +10,8 @@ class Messages:
     # Keybar bindings
     key_new_job: str
     key_run_now: str
+    key_move_job: str
+    key_new_folder: str
     key_toggle_pause: str
     key_delete_job: str
     key_quit: str
@@ -21,6 +23,7 @@ class Messages:
     inspector_execution: str
     inspector_history: str
     empty_state_text: str
+    lbl_ungrouped: str
 
     # Status badges
     status_running_today: str
@@ -32,6 +35,10 @@ class Messages:
     # Form modal
     modal_title_new: str
     modal_title_edit: str
+    modal_title_move: str
+    modal_title_new_folder: str
+    lbl_no_folder_root: str
+    lbl_create_new_folder_option: str
     lbl_job_id: str
     lbl_job_name: str
     lbl_cwd: str

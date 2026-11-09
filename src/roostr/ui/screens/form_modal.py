@@ -129,13 +129,6 @@ class JobFormModal(ModalScreen[Job | None]):
                     value=self.job.name if self.job else "",
                 )
 
-                yield Label(self.msg.lbl_folder, classes="field-label")
-                yield Input(
-                    placeholder="e.g. Work or Work/Reports (optional)",
-                    id="inp-folder",
-                    value=self.job.folder if self.job and self.job.folder else "",
-                )
-
                 yield Label(self.msg.lbl_cwd, classes="field-label")
                 yield Input(
                     placeholder="/path/to/project",
@@ -310,12 +303,7 @@ class JobFormModal(ModalScreen[Job | None]):
             target = BackgroundTargetConfig(log_file=log_file, notify_on_complete=True)
 
         sentinel = self.query_one("#inp-sentinel", Input).value.strip() or None
-        folder_val = self.query_one("#inp-folder", Input).value.strip() or None
-        if folder_val:
-            parts = [p.strip() for p in folder_val.strip("/").split("/") if p.strip()]
-            if len(parts) > 2:
-                error_label.update("Folder hierarchy cannot exceed 2 levels (e.g. Work or Work/Reports).")
-                return
+        folder_val = self.job.folder if self.job else None
 
         job = Job(
             id=job_id,

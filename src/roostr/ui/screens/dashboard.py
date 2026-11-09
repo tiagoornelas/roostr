@@ -102,6 +102,16 @@ class SubfolderHeaderItem(ListItem):
             yield Label(f"[dim]{self.count}[/]", classes="subfolder-header-badge")
 
 
+class UngroupedHeaderItem(ListItem):
+    def __init__(self, label: str):
+        super().__init__()
+        self.label = label
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="ungrouped-header-row"):
+            yield Label(f"[dim]─── {self.label} ───[/]", classes="ungrouped-header-title")
+
+
 class ExecutionRow(Static):
     DEFAULT_CSS = """
     ExecutionRow {
@@ -261,6 +271,32 @@ class DashboardScreen(Screen):
         padding: 0 1;
     }
 
+    #jobs-list > UngroupedHeaderItem {
+        height: 1;
+        padding: 0 1;
+        margin: 1 1 0 1;
+        background: transparent;
+        border: none;
+    }
+
+    #jobs-list > UngroupedHeaderItem:hover,
+    #jobs-list > UngroupedHeaderItem.-highlight {
+        background: transparent;
+        border: none;
+    }
+
+    .ungrouped-header-row {
+        height: 1;
+        align: center middle;
+    }
+
+    .ungrouped-header-title {
+        color: $secondary;
+        text-style: bold;
+        text-align: center;
+        width: 100%;
+    }
+
     #jobs-list > JobListItem {
         height: auto;
         padding: 0 1;
@@ -381,6 +417,14 @@ class DashboardScreen(Screen):
     def on_mount(self) -> None:
         self.refresh_jobs()
 
+    def get_current_focused_item(self) -> ListItem | None:
+        jobs_list = self.query_one("#jobs-list", ListView)
+        if jobs_list.index is not None and 0 <= jobs_list.index < len(jobs_list.children):
+            item = jobs_list.children[jobs_list.index]
+            if isinstance(item, ListItem):
+                return item
+        return None
+
     def update_theme(self, theme_name: str) -> None:
         self.active_theme = theme_name
         if self.selected_job:
@@ -397,9 +441,22 @@ class DashboardScreen(Screen):
         jobs = self.storage.list_jobs()
         today = date.today()
 
-        root_jobs: list[Job] = []
+        # Build folder tree with all existing folders (including empty ones)
+        all_folders = self.storage.list_folders() if hasattr(self.storage, "list_folders") else []
         folder_tree: dict[str, dict] = {}
+        for f in all_folders:
+            parts = [p.strip() for p in f.strip("/").split("/") if p.strip()]
+            if not parts:
+                continue
+            rf = parts[0]
+            if rf not in folder_tree:
+                folder_tree[rf] = {"direct": [], "subfolders": {}}
+            if len(parts) > 1:
+                sf = parts[1]
+                if sf not in folder_tree[rf]["subfolders"]:
+                    folder_tree[rf]["subfolders"][sf] = []
 
+        root_jobs: list[Job] = []
         for job in jobs:
             if not job.folder:
                 root_jobs.append(job)
@@ -418,15 +475,7 @@ class DashboardScreen(Screen):
         items_to_add: list[ListItem] = []
         job_index_map: dict[str, int] = {}
 
-        # 1. Root jobs first
-        for job in root_jobs:
-            ran_today = self.storage.has_succeeded_on_date(job.id, today)
-            run_count = self.storage.count_executions(job.id)
-            item = JobListItem(job, ran_today, run_count, self.msg, indent=0)
-            job_index_map[job.id] = len(items_to_add)
-            items_to_add.append(item)
-
-        # 2. Folders and Subfolders
+        # 1. Folders and Subfolders come FIRST
         for rf in sorted(folder_tree.keys()):
             data = folder_tree[rf]
             is_rf_collapsed = rf in self.collapsed_folders
@@ -455,6 +504,17 @@ class DashboardScreen(Screen):
                             item = JobListItem(job, ran_today, run_count, self.msg, indent=2)
                             job_index_map[job.id] = len(items_to_add)
                             items_to_add.append(item)
+
+        # 2. Ungrouped / root jobs come LAST ("os sem pasta ficam por ultimo")
+        if root_jobs:
+            if folder_tree:
+                items_to_add.append(UngroupedHeaderItem(self.msg.lbl_ungrouped))
+            for job in root_jobs:
+                ran_today = self.storage.has_succeeded_on_date(job.id, today)
+                run_count = self.storage.count_executions(job.id)
+                item = JobListItem(job, ran_today, run_count, self.msg, indent=0)
+                job_index_map[job.id] = len(items_to_add)
+                items_to_add.append(item)
 
         for item in items_to_add:
             jobs_list.append(item)
@@ -500,6 +560,30 @@ class DashboardScreen(Screen):
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and isinstance(event.item, JobListItem):
             self.show_job_details(event.item.job)
+        elif event.item and isinstance(event.item, FolderHeaderItem):
+            self.show_folder_details(event.item.folder_name, event.item.count, is_subfolder=False)
+        elif event.item and isinstance(event.item, SubfolderHeaderItem):
+            self.show_folder_details(event.item.subfolder_key, event.item.count, is_subfolder=True)
+
+    def show_folder_details(self, folder_name: str, count: int, is_subfolder: bool = False) -> None:
+        primary_color = (
+            self.app.current_theme.primary
+            if hasattr(self.app, "current_theme") and self.app.current_theme
+            else "#ffffff"
+        )
+        folder_type = "Subfolder" if is_subfolder else "Folder"
+        details_markup = f"""
+[bold size=14]{folder_name.upper()}[/]  [dim]({folder_type})[/]
+[dim]Active Jobs:[/]  [bold]{count}[/]
+
+[bold {primary_color}]FOLDER ACTIONS[/]
+[dim]• Press [bold white]m[/] on any job to move it into this folder.[/]
+[dim]• Press [bold white]f[/] to create a new folder or subfolder.[/]
+[dim]• Press [bold white]d[/] to delete this folder (if empty).[/]
+"""
+        self.query_one("#inspector-details", Static).update(details_markup)
+        history_container = self.query_one("#inspector-history", Vertical)
+        history_container.remove_children()
 
     def show_job_details(self, job: Job) -> None:
         self.selected_job = job

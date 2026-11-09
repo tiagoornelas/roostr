@@ -65,6 +65,10 @@ class SQLiteStorage:
                     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS folders (
+                    name TEXT PRIMARY KEY
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_executions_job_date 
                 ON executions(job_id, timestamp, status);
             """)
@@ -74,7 +78,16 @@ class SQLiteStorage:
             if "folder" not in columns:
                 conn.execute("ALTER TABLE jobs ADD COLUMN folder TEXT")
 
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO folders (name)
+                SELECT DISTINCT folder FROM jobs WHERE folder IS NOT NULL AND folder != ''
+                """
+            )
+
     def save_job(self, job: Job) -> None:
+        if job.folder:
+            self.save_folder(job.folder)
         target_dict = self._target_to_dict(job.target)
         with self._connection() as conn:
             conn.execute(
@@ -131,6 +144,51 @@ class SQLiteStorage:
     def delete_job(self, job_id: str) -> None:
         with self._connection() as conn:
             conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
+    def save_folder(self, name: str) -> str:
+        cleaned = "/".join([p.strip() for p in name.strip().strip("/").split("/") if p.strip()])
+        if not cleaned:
+            raise ValueError("Folder name cannot be empty")
+        parts = cleaned.split("/")
+        if len(parts) > 2:
+            raise ValueError(f"Folder hierarchy cannot exceed 2 levels (got '{name}')")
+
+        with self._connection() as conn:
+            if len(parts) == 2:
+                conn.execute("INSERT OR IGNORE INTO folders (name) VALUES (?)", (parts[0],))
+            conn.execute("INSERT OR IGNORE INTO folders (name) VALUES (?)", (cleaned,))
+        return cleaned
+
+    def list_folders(self) -> list[str]:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT name FROM folders
+                UNION
+                SELECT DISTINCT folder FROM jobs WHERE folder IS NOT NULL AND folder != ''
+                ORDER BY name ASC
+                """
+            )
+            return [row[0] for row in cursor.fetchall() if row[0]]
+
+    def delete_folder(self, name: str) -> None:
+        cleaned = "/".join([p.strip() for p in name.strip().strip("/").split("/") if p.strip()])
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM jobs WHERE folder = ? OR folder LIKE ? || '/%'",
+                (cleaned, cleaned),
+            )
+            count = cursor.fetchone()[0]
+            if count > 0:
+                raise ValueError(f"Cannot delete folder '{cleaned}': contains {count} job(s)")
+            conn.execute("DELETE FROM folders WHERE name = ? OR name LIKE ? || '/%'", (cleaned, cleaned))
+
+    def move_job(self, job_id: str, folder: str | None) -> None:
+        cleaned_folder: str | None = None
+        if folder:
+            cleaned_folder = self.save_folder(folder)
+        with self._connection() as conn:
+            conn.execute("UPDATE jobs SET folder = ? WHERE id = ?", (cleaned_folder, job_id))
 
     def set_paused(self, job_id: str, paused: bool) -> None:
         with self._connection() as conn:

@@ -9,8 +9,14 @@ from roostr.domain.enums import ExecutionStatus
 from roostr.domain.models import Job
 from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
 from roostr.infrastructure.targets.herdr import register_herdr_program
-from roostr.ui.screens.dashboard import DashboardScreen
+from roostr.ui.screens.dashboard import (
+    DashboardScreen,
+    FolderHeaderItem,
+    SubfolderHeaderItem,
+)
+from roostr.ui.screens.folder_modal import NewFolderModal
 from roostr.ui.screens.form_modal import JobFormModal
+from roostr.ui.screens.move_modal import MoveJobModal
 from roostr.ui.screens.settings_modal import SettingsModal
 from roostr.ui.themes import DEFAULT_THEME, ROOSTR_THEMES, THEME_NAMES
 
@@ -26,7 +32,8 @@ class RoostrApp(App):
     BINDINGS = [
         Binding("n", "new_job", "New Job", show=True),
         Binding("r", "run_now", "Run Now", show=True),
-        Binding("o", "open_session", "Open Session", show=True),
+        Binding("m", "move_job", "Move to Folder", show=True),
+        Binding("f", "new_folder", "New Folder", show=True),
         Binding("p", "toggle_pause", "Pause/Resume", show=True),
         Binding("d", "delete_job", "Delete", show=True),
         Binding("s", "open_settings", "Settings", show=True),
@@ -87,6 +94,44 @@ class RoostrApp(App):
 
         self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
 
+    def action_move_job(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            self.notify(self.msg.notify_no_selection, severity="warning")
+            return
+
+        job = self.dashboard_screen.selected_job
+        folders = self.manage_use_case.list_folders()
+
+        def on_move_result(target_folder: str | None) -> None:
+            if target_folder is not None:
+                dest = target_folder if target_folder else None
+                try:
+                    self.manage_use_case.move_job(job.id, dest)
+                    dest_display = dest if dest else "Root (No Folder)"
+                    self.notify(f"Job '{job.name}' moved to {dest_display}.", title="Moved")
+                    self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
+                except Exception as e:
+                    self.notify(f"Error moving job: {e}", title="Error", severity="error")
+
+        self.push_screen(MoveJobModal(job, folders, self.msg), on_move_result)
+
+    def action_new_folder(self) -> None:
+        prefill = ""
+        focused = self.dashboard_screen.get_current_focused_item()
+        if isinstance(focused, FolderHeaderItem):
+            prefill = f"{focused.folder_name}/"
+
+        def on_folder_result(folder_name: str | None) -> None:
+            if folder_name:
+                try:
+                    self.manage_use_case.create_folder(folder_name)
+                    self.notify(f"Folder '{folder_name}' created.", title="Success")
+                    self.dashboard_screen.refresh_jobs()
+                except Exception as e:
+                    self.notify(f"Error creating folder: {e}", title="Error", severity="error")
+
+        self.push_screen(NewFolderModal(self.msg, prefill=prefill), on_folder_result)
+
     def action_run_now(self) -> None:
         if not self.dashboard_screen.selected_job:
             self.notify(self.msg.notify_no_selection, severity="warning")
@@ -94,27 +139,6 @@ class RoostrApp(App):
 
         job = self.dashboard_screen.selected_job
         self._dispatch_run_now_async(job)
-
-    def action_open_session(self) -> None:
-        if not self.dashboard_screen.selected_job:
-            self.notify(self.msg.notify_no_selection, severity="warning")
-            return
-
-        cmd = getattr(self.dashboard_screen, "latest_session_command", None)
-        if cmd:
-            import subprocess
-
-            try:
-                subprocess.run(["pbcopy"], input=cmd.encode("utf-8"), check=True)
-                self.notify(f"Copied: {cmd}", title="Open Session")
-            except Exception:
-                self.notify(f"Run: {cmd}", title="Open Session")
-        else:
-            self.notify(
-                "No recent interactive terminal session found for this job.",
-                title="Open Session",
-                severity="information",
-            )
 
     @work(thread=True)
     def _dispatch_run_now_async(self, job: Job) -> None:
@@ -140,6 +164,26 @@ class RoostrApp(App):
         self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
 
     def action_delete_job(self) -> None:
+        focused = self.dashboard_screen.get_current_focused_item()
+        if isinstance(focused, FolderHeaderItem):
+            fn = focused.folder_name
+            try:
+                self.manage_use_case.delete_folder(fn)
+                self.notify(f"Folder '{fn}' deleted.", title="Deleted", severity="information")
+                self.dashboard_screen.refresh_jobs()
+            except ValueError as e:
+                self.notify(str(e), title="Cannot Delete", severity="warning")
+            return
+        elif isinstance(focused, SubfolderHeaderItem):
+            sk = focused.subfolder_key
+            try:
+                self.manage_use_case.delete_folder(sk)
+                self.notify(f"Subfolder '{sk}' deleted.", title="Deleted", severity="information")
+                self.dashboard_screen.refresh_jobs()
+            except ValueError as e:
+                self.notify(str(e), title="Cannot Delete", severity="warning")
+            return
+
         if not self.dashboard_screen.selected_job:
             return
 

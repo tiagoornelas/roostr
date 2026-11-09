@@ -35,3 +35,15 @@ class ManageJobsUseCase:
     def delete_job(self, job_id: str) -> None:
         self.scheduler.uninstall(job_id)
         self.storage.delete_job(job_id)
+
+    def move_job(self, job_id: str, folder: str | None) -> None:
+        self.storage.move_job(job_id, folder)
+
+    def create_folder(self, folder: str) -> str:
+        return self.storage.save_folder(folder)
+
+    def delete_folder(self, folder: str) -> None:
+        self.storage.delete_folder(folder)
+
+    def list_folders(self) -> list[str]:
+        return self.storage.list_folders()
