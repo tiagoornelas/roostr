@@ -4,7 +4,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, RadioButton, RadioSet
 
-from roostr.i18n.catalog import SUPPORTED_LOCALES
+from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
 from roostr.i18n.schema import Messages
 from roostr.ui.themes import THEME_NAMES
 
@@ -72,8 +72,22 @@ class SettingsModal(ModalScreen[dict | None]):
         padding-top: 1;
     }
 
-    .settings-actions Button {
+    Button {
+        background: $panel;
+        color: $foreground;
+        border: none;
+        min-width: 14;
         margin-left: 1;
+    }
+
+    Button:hover {
+        background: $panel;
+    }
+
+    Button.-primary {
+        background: $primary;
+        color: $background;
+        text-style: bold;
     }
     """
 
@@ -84,6 +98,8 @@ class SettingsModal(ModalScreen[dict | None]):
 
     def __init__(self, current_theme: str, current_locale: str, messages: Messages):
         super().__init__()
+        self.initial_theme = current_theme
+        self.initial_locale = current_locale
         self.current_theme = current_theme
         self.current_locale = current_locale
         self.msg = messages
@@ -123,6 +139,30 @@ class SettingsModal(ModalScreen[dict | None]):
                 yield Button(self.msg.btn_save, variant="primary", id="btn-save")
                 yield Button(self.msg.btn_close, id="btn-cancel")
 
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id == "theme-radios":
+            if event.pressed and event.pressed.id:
+                theme_name = event.pressed.id.replace("theme-", "")
+                self.current_theme = theme_name
+                self.app.theme = theme_name
+                if hasattr(self.app, "dashboard_screen"):
+                    self.app.dashboard_screen.update_theme(theme_name)
+        elif event.radio_set.id == "lang-radios":
+            if event.pressed and event.pressed.id:
+                locale = event.pressed.id.replace("lang-", "")
+                self.current_locale = locale
+                self.app.locale = locale
+                self.msg = get_messages(locale)
+                self.app.msg = self.msg
+                if hasattr(self.app, "dashboard_screen"):
+                    self.app.dashboard_screen.update_messages(self.msg)
+                try:
+                    self.query_one("#settings-title", Label).update(f"⚙️  {self.msg.settings_title}")
+                    self.query_one("#btn-save", Button).label = self.msg.btn_save
+                    self.query_one("#btn-cancel", Button).label = self.msg.btn_close
+                except Exception:
+                    pass
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-save":
             self.action_save()
@@ -130,19 +170,20 @@ class SettingsModal(ModalScreen[dict | None]):
             self.action_cancel()
 
     def action_cancel(self) -> None:
+        # Revert theme if changed during preview
+        if self.app.theme != self.initial_theme:
+            self.app.theme = self.initial_theme
+            if hasattr(self.app, "dashboard_screen"):
+                self.app.dashboard_screen.update_theme(self.initial_theme)
+
+        # Revert locale if changed during preview
+        if self.app.locale != self.initial_locale:
+            self.app.locale = self.initial_locale
+            self.app.msg = get_messages(self.initial_locale)
+            if hasattr(self.app, "dashboard_screen"):
+                self.app.dashboard_screen.update_messages(self.app.msg)
+
         self.dismiss(None)
 
     def action_save(self) -> None:
-        # Determine selected theme
-        theme_radios = self.query_one("#theme-radios", RadioSet)
-        selected_theme = self.current_theme
-        if theme_radios.pressed_button and theme_radios.pressed_button.id:
-            selected_theme = theme_radios.pressed_button.id.replace("theme-", "")
-
-        # Determine selected locale
-        lang_radios = self.query_one("#lang-radios", RadioSet)
-        selected_locale = self.current_locale
-        if lang_radios.pressed_button and lang_radios.pressed_button.id:
-            selected_locale = lang_radios.pressed_button.id.replace("lang-", "")
-
-        self.dismiss({"theme": selected_theme, "locale": selected_locale})
+        self.dismiss({"theme": self.current_theme, "locale": self.current_locale})

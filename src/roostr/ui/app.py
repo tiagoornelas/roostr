@@ -26,6 +26,7 @@ class RoostrApp(App):
     BINDINGS = [
         Binding("n", "new_job", "New Job", show=True),
         Binding("r", "run_now", "Run Now", show=True),
+        Binding("o", "open_session", "Open Session", show=True),
         Binding("p", "toggle_pause", "Pause/Resume", show=True),
         Binding("d", "delete_job", "Delete", show=True),
         Binding("s", "open_settings", "Settings", show=True),
@@ -93,6 +94,27 @@ class RoostrApp(App):
 
         job = self.dashboard_screen.selected_job
         self._dispatch_run_now_async(job)
+
+    def action_open_session(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            self.notify(self.msg.notify_no_selection, severity="warning")
+            return
+
+        cmd = getattr(self.dashboard_screen, "latest_session_command", None)
+        if cmd:
+            import subprocess
+
+            try:
+                subprocess.run(["pbcopy"], input=cmd.encode("utf-8"), check=True)
+                self.notify(f"Copied: {cmd}", title="Open Session")
+            except Exception:
+                self.notify(f"Run: {cmd}", title="Open Session")
+        else:
+            self.notify(
+                "No recent interactive terminal session found for this job.",
+                title="Open Session",
+                severity="information",
+            )
 
     @work(thread=True)
     def _dispatch_run_now_async(self, job: Job) -> None:

@@ -69,8 +69,22 @@ class JobFormModal(ModalScreen[Job | None]):
         height: 3;
     }
 
-    .button-row Button {
+    Button {
+        background: $panel;
+        color: $foreground;
+        border: none;
+        min-width: 14;
         margin-left: 2;
+    }
+
+    Button:hover {
+        background: $panel;
+    }
+
+    Button.-primary {
+        background: $primary;
+        color: $background;
+        text-style: bold;
     }
 
     #error-label {

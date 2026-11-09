@@ -84,16 +84,6 @@ class DashboardScreen(Screen):
         background: $background;
     }
 
-    #sidebar-header {
-        background: $background;
-        color: $secondary;
-        padding: 0 1;
-        height: 2;
-        content-align: left middle;
-        border-bottom: solid $panel;
-        text-style: bold;
-    }
-
     #jobs-list {
         height: 1fr;
         background: $background;
@@ -197,7 +187,6 @@ class DashboardScreen(Screen):
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
-                yield Label(self.msg.sidebar_header, id="sidebar-header")
                 yield ListView(id="jobs-list")
 
             with VerticalScroll(id="inspector"):
@@ -217,7 +206,6 @@ class DashboardScreen(Screen):
 
     def update_messages(self, messages: Messages) -> None:
         self.msg = messages
-        self.query_one("#sidebar-header", Label).update(self.msg.sidebar_header)
         self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
 
     def refresh_jobs(self, selected_job_id: str | None = None) -> None:
@@ -278,6 +266,38 @@ class DashboardScreen(Screen):
                 else f"Janela de {job.schedule.tolerance_value}h"
             )
 
+        # Format semantic days
+        is_en = self.msg.locale == "en"
+        days_names_en = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+        days_names_pt = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
+        days_names_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
+
+        if self.msg.locale == "pt_br":
+            days_map = days_names_pt
+            weekdays_lbl = "Dias úteis (Segunda a Sexta)"
+            everyday_lbl = "Todos os dias"
+            weekend_lbl = "Fim de semana (Sábado e Domingo)"
+        elif self.msg.locale == "es":
+            days_map = days_names_es
+            weekdays_lbl = "Días laborables (Lunes a Viernes)"
+            everyday_lbl = "Todos los días"
+            weekend_lbl = "Fin de semana (Sábado y Domingo)"
+        else:
+            days_map = days_names_en
+            weekdays_lbl = "Weekdays (Monday to Friday)"
+            everyday_lbl = "Every day"
+            weekend_lbl = "Weekends (Saturday and Sunday)"
+
+        days = sorted(job.schedule.days_of_week)
+        if len(days) == 5 and days == [0, 1, 2, 3, 4]:
+            days_semantic = weekdays_lbl
+        elif len(days) == 7:
+            days_semantic = everyday_lbl
+        elif len(days) == 2 and days == [5, 6]:
+            days_semantic = weekend_lbl
+        else:
+            days_semantic = ", ".join(days_map.get(d, str(d)) for d in days)
+
         # Format target
         if isinstance(job.target, TerminalTargetConfig):
             target_str = f"Terminal Window (App: {job.target.app.value})"
@@ -288,7 +308,10 @@ class DashboardScreen(Screen):
 
         sentinel_info = job.sentinel_pattern or "[dim]None (standard database idempotency)[/]"
 
-        # Execution history
+        # Execution history & session detection
+        import re
+
+        self.latest_session_command = None
         history_lines = []
         if recent_records:
             for rec in recent_records:
@@ -296,8 +319,18 @@ class DashboardScreen(Screen):
                 color = "green" if rec.status == ExecutionStatus.SUCCESS else "yellow"
                 if rec.status == ExecutionStatus.FAILED:
                     color = "red"
+
+                # Detect session ID for quick jump
+                if not self.latest_session_command:
+                    match = re.search(r"\b(tb[a-f0-9]{20,})\b", rec.details)
+                    if match:
+                        self.latest_session_command = f"hc attach {match.group(1)}"
+
+                # Clean raw hash from details for human-readable display
+                cleaned = re.sub(r"\btb[a-f0-9]{20,}\b\s*", "", rec.details)
+                cleaned = re.sub(r"in tab\s+\('", "in ('", cleaned)
                 history_lines.append(
-                    f"[dim]{ts}[/] [{color}]{rec.status.value}[/] ([dim]{rec.trigger_type.value}[/]): {rec.details}"
+                    f"[dim]{ts}[/] [{color}]{rec.status.value}[/] ([dim]{rec.trigger_type.value}[/]): {cleaned}"
                 )
         else:
             history_lines.append("[dim]No executions recorded yet.[/]")
@@ -319,7 +352,7 @@ class DashboardScreen(Screen):
 
 [bold {primary_color}]{self.msg.inspector_schedule}[/]
 [dim]Time:[/]      [bold]{job.schedule.time_of_day.strftime("%H:%M")}[/]
-[dim]Days:[/]      [bold]{job.schedule.days_of_week}[/]
+[dim]Days:[/]      [bold]{days_semantic}[/]
 [dim]Policy:[/]    [bold]{tol_str}[/]
 
 [bold {primary_color}]{self.msg.inspector_execution}[/]
