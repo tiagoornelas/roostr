@@ -96,10 +96,12 @@ class RoostrApp(App):
                 try:
                     self.manage_use_case.create_job(job)
                     created_msg = self.msg.notify_success_created.replace("{name}", job.name)
-                    self.notify(created_msg, title="Success", severity="information")
+                    self.notify(created_msg, title=self.msg.title_success, severity="information")
                     self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
                 except Exception as e:
-                    self.notify(f"Error saving job: {e}", title="Error", severity="error")
+                    self.notify(
+                        self.msg.msg_error_saving_job.format(error=e), title=self.msg.title_error, severity="error"
+                    )
 
         self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
 
@@ -116,11 +118,15 @@ class RoostrApp(App):
                 dest = target_folder if target_folder else None
                 try:
                     self.manage_use_case.move_job(job.id, dest)
-                    dest_display = dest if dest else "Root (No Folder)"
-                    self.notify(self.msg.notify_moved.format(name=job.name, dest=dest_display), title="Moved")
+                    dest_display = dest if dest else self.msg.lbl_no_folder_root
+                    self.notify(
+                        self.msg.notify_moved.format(name=job.name, dest=dest_display), title=self.msg.title_moved
+                    )
                     self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
                 except Exception as e:
-                    self.notify(f"Error moving job: {e}", title="Error", severity="error")
+                    self.notify(
+                        self.msg.msg_error_moving_job.format(error=e), title=self.msg.title_error, severity="error"
+                    )
 
         self.push_screen(MoveJobModal(job, folders, self.msg), on_move_result)
 
@@ -134,10 +140,12 @@ class RoostrApp(App):
             if folder_name:
                 try:
                     self.manage_use_case.create_folder(folder_name)
-                    self.notify(self.msg.notify_folder_created.format(name=folder_name), title="Success")
+                    self.notify(self.msg.notify_folder_created.format(name=folder_name), title=self.msg.title_success)
                     self.dashboard_screen.refresh_jobs()
                 except Exception as e:
-                    self.notify(f"Error creating folder: {e}", title="Error", severity="error")
+                    self.notify(
+                        self.msg.msg_error_creating_folder.format(error=e), title=self.msg.title_error, severity="error"
+                    )
 
         self.push_screen(NewFolderModal(self.msg, prefill=prefill), on_folder_result)
 
@@ -151,12 +159,12 @@ class RoostrApp(App):
 
     @work(thread=True)
     def _dispatch_run_now_async(self, job: Job) -> None:
-        self.notify(self.msg.notify_running.replace("{name}", job.name), title="Executing")
+        self.notify(self.msg.notify_running.replace("{name}", job.name), title=self.msg.title_executing)
         status, msg = self.execute_use_case.execute(job.id, force=True)
         if status == ExecutionStatus.SUCCESS:
-            self.notify(f"Success: {msg}", title="Completed", severity="information")
+            self.notify(f"{self.msg.title_success}: {msg}", title=self.msg.title_completed, severity="information")
         else:
-            self.notify(f"{status.value}: {msg}", title="Result", severity="warning")
+            self.notify(f"{status.value}: {msg}", title=self.msg.title_schedule, severity="warning")
         self.call_from_thread(self.dashboard_screen.refresh_jobs, job.id)
 
     def action_toggle_pause(self) -> None:
@@ -169,7 +177,7 @@ class RoostrApp(App):
             notice = self.msg.notify_paused.replace("{name}", job.name)
         else:
             notice = self.msg.notify_resumed.replace("{name}", job.name)
-        self.notify(notice, title="Schedule")
+        self.notify(notice, title=self.msg.title_schedule)
         self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
 
     def action_delete_job(self) -> None:
@@ -178,19 +186,23 @@ class RoostrApp(App):
             fn = focused.folder_name
             try:
                 self.manage_use_case.delete_folder(fn)
-                self.notify(self.msg.notify_folder_deleted.format(name=fn), title="Deleted", severity="information")
+                self.notify(
+                    self.msg.notify_folder_deleted.format(name=fn), title=self.msg.title_deleted, severity="information"
+                )
                 self.dashboard_screen.refresh_jobs()
             except ValueError as e:
-                self.notify(str(e), title="Cannot Delete", severity="warning")
+                self.notify(str(e), title=self.msg.title_cannot_delete, severity="warning")
             return
         elif isinstance(focused, SubfolderHeaderItem):
             sk = focused.subfolder_key
             try:
                 self.manage_use_case.delete_folder(sk)
-                self.notify(self.msg.notify_folder_deleted.format(name=sk), title="Deleted", severity="information")
+                self.notify(
+                    self.msg.notify_folder_deleted.format(name=sk), title=self.msg.title_deleted, severity="information"
+                )
                 self.dashboard_screen.refresh_jobs()
             except ValueError as e:
-                self.notify(str(e), title="Cannot Delete", severity="warning")
+                self.notify(str(e), title=self.msg.title_cannot_delete, severity="warning")
             return
 
         if not self.dashboard_screen.selected_job:
@@ -199,7 +211,7 @@ class RoostrApp(App):
         job = self.dashboard_screen.selected_job
         self.manage_use_case.delete_job(job.id)
         deleted_msg = self.msg.notify_success_deleted.replace("{name}", job.name)
-        self.notify(deleted_msg, title="Deleted", severity="information")
+        self.notify(deleted_msg, title=self.msg.title_deleted, severity="information")
         self.dashboard_screen.refresh_jobs()
 
     def _update_bindings_language(self) -> None:
@@ -252,11 +264,13 @@ class RoostrApp(App):
 
             if new_theme and new_theme != self.theme:
                 self.set_theme(new_theme)
-                self.notify(f"Theme: {new_theme}", title="Settings")
+                self.notify(self.msg.msg_theme_changed.format(theme=new_theme), title=self.msg.title_settings)
 
             if new_locale and new_locale != self.locale:
                 self.set_locale(new_locale)
-                self.notify(f"Language: {self.locale.upper()}", title="Settings")
+                self.notify(
+                    self.msg.msg_language_changed.format(lang=self.locale.upper()), title=self.msg.title_settings
+                )
 
         self.push_screen(
             SettingsModal(
@@ -271,10 +285,10 @@ class RoostrApp(App):
         current_idx = THEME_NAMES.index(self.theme) if self.theme in THEME_NAMES else 0
         next_theme = THEME_NAMES[(current_idx + 1) % len(THEME_NAMES)]
         self.set_theme(next_theme)
-        self.notify(f"Theme changed to {next_theme}", title="Theme")
+        self.notify(self.msg.msg_theme_changed.format(theme=next_theme), title=self.msg.title_theme)
 
     def action_switch_language(self) -> None:
         current_idx = SUPPORTED_LOCALES.index(self.locale) if self.locale in SUPPORTED_LOCALES else 0
         next_locale = SUPPORTED_LOCALES[(current_idx + 1) % len(SUPPORTED_LOCALES)]
         self.set_locale(next_locale)
-        self.notify(f"Language changed to {self.locale.upper()}", title="i18n")
+        self.notify(self.msg.msg_language_changed.format(lang=self.locale.upper()), title=self.msg.settings_language)

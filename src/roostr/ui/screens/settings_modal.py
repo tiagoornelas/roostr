@@ -116,7 +116,9 @@ class SettingsModal(ModalScreen[dict | None]):
 
             with Horizontal(classes="settings-body"):
                 with Vertical(classes="settings-col"):
-                    yield Label(f"🎨 {self.msg.settings_theme}", classes="settings-section-title")
+                    yield Label(
+                        f"🎨 {self.msg.settings_theme}", id="settings-theme-title", classes="settings-section-title"
+                    )
                     with RadioSet(id="theme-radios"):
                         for name in THEME_NAMES:
                             yield RadioButton(
@@ -126,7 +128,9 @@ class SettingsModal(ModalScreen[dict | None]):
                             )
 
                 with Vertical(classes="settings-col"):
-                    yield Label(f"🌐 {self.msg.settings_language}", classes="settings-section-title")
+                    yield Label(
+                        f"🌐 {self.msg.settings_language}", id="settings-lang-title", classes="settings-section-title"
+                    )
                     with RadioSet(id="lang-radios"):
                         for loc in SUPPORTED_LOCALES:
                             yield RadioButton(
@@ -158,6 +162,8 @@ class SettingsModal(ModalScreen[dict | None]):
                     self.app.dashboard_screen.update_messages(self.msg)
                 try:
                     self.query_one("#settings-title", Label).update(f"⚙️  {self.msg.settings_title}")
+                    self.query_one("#settings-theme-title", Label).update(f"🎨 {self.msg.settings_theme}")
+                    self.query_one("#settings-lang-title", Label).update(f"🌐 {self.msg.settings_language}")
                     self.query_one("#btn-save", Button).label = self.msg.btn_save
                     self.query_one("#btn-cancel", Button).label = self.msg.btn_close
                 except Exception:

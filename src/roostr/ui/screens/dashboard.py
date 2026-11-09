@@ -11,7 +11,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 
 from roostr.application.ports import JobRepositoryPort
-from roostr.domain.enums import AIHarness, ExecutionStatus, ScheduleFrequency
+from roostr.domain.enums import AIHarness, ExecutionStatus, ScheduleFrequency, TriggerType
 from roostr.domain.models import (
     HARNESS_INFO,
     AgentAction,
@@ -52,11 +52,7 @@ class JobListItem(ListItem):
             name_markup = f"[bold]{self.job.name}[/]"
 
         if self.job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
-            sched_str = (
-                f"every {self.job.schedule.interval_value}h"
-                if self.msg.locale == "en"
-                else f"a cada {self.job.schedule.interval_value}h"
-            )
+            sched_str = self.msg.lbl_every_hours.format(val=self.job.schedule.interval_value)
             if self.job.schedule.start_time and self.job.schedule.end_time:
                 sched_str += f" ({self.job.schedule.start_time.strftime('%H:%M')}–{self.job.schedule.end_time.strftime('%H:%M')})"
             elif self.job.schedule.start_time:
@@ -64,11 +60,7 @@ class JobListItem(ListItem):
             elif self.job.schedule.end_time:
                 sched_str += f" (<{self.job.schedule.end_time.strftime('%H:%M')})"
         elif self.job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
-            sched_str = (
-                f"every {self.job.schedule.interval_value}m"
-                if self.msg.locale == "en"
-                else f"a cada {self.job.schedule.interval_value}m"
-            )
+            sched_str = self.msg.lbl_every_minutes.format(val=self.job.schedule.interval_value)
             if self.job.schedule.start_time and self.job.schedule.end_time:
                 sched_str += f" ({self.job.schedule.start_time.strftime('%H:%M')}–{self.job.schedule.end_time.strftime('%H:%M')})"
             elif self.job.schedule.start_time:
@@ -78,7 +70,11 @@ class JobListItem(ListItem):
         else:
             if len(self.job.schedule.times_of_day) > 1:
                 times_joined = ", ".join(t.strftime("%H:%M") for t in self.job.schedule.times_of_day)
-                sched_str = times_joined if len(times_joined) <= 25 else f"{len(self.job.schedule.times_of_day)}x/day"
+                sched_str = (
+                    times_joined
+                    if len(times_joined) <= 25
+                    else self.msg.lbl_times_per_day.format(count=len(self.job.schedule.times_of_day))
+                )
             else:
                 sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
         if len(self.job.schedule.days_of_week) == 5 and self.job.schedule.days_of_week == (0, 1, 2, 3, 4):
@@ -268,9 +264,23 @@ class ExecutionRow(Static):
         if self.record.status == ExecutionStatus.FAILED:
             color = "red"
 
+        status_labels = {
+            ExecutionStatus.SUCCESS: self.msg.status_history_success,
+            ExecutionStatus.SKIPPED_ALREADY_RAN: self.msg.status_history_already_ran,
+            ExecutionStatus.SKIPPED_OUTSIDE_WINDOW: self.msg.status_history_outside_window,
+            ExecutionStatus.SKIPPED_TARGET_OFFLINE: self.msg.status_history_target_offline,
+            ExecutionStatus.FAILED: self.msg.status_history_failed,
+        }
+        trigger_labels = {
+            TriggerType.SCHEDULED: self.msg.trigger_history_scheduled,
+            TriggerType.MANUAL: self.msg.trigger_history_manual,
+        }
+        status_display = status_labels.get(self.record.status, self.record.status.value)
+        trigger_display = trigger_labels.get(self.record.trigger_type, self.record.trigger_type.value)
+
         copy_hint = f"  [dim cyan]{self.msg.lbl_click_to_copy}[/]"
         self.update(
-            f"[dim]{ts}[/] [{color}]{self.record.status.value}[/] ([dim]{self.record.trigger_type.value}[/]): {self.cleaned_details}{copy_hint}"
+            f"[dim]{ts}[/] [{color}]{status_display}[/] ([dim]{trigger_display}[/]): {self.cleaned_details}{copy_hint}"
         )
 
     def on_click(self, event: events.Click) -> None:
@@ -740,27 +750,19 @@ class DashboardScreen(Screen):
 
         # Format schedule and tolerance
         if job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
-            time_display = (
-                f"Every {job.schedule.interval_value}h"
-                if self.msg.locale == "en"
-                else f"A cada {job.schedule.interval_value}h"
-            )
+            time_display = self.msg.lbl_every_hours_title.format(val=job.schedule.interval_value)
             if job.schedule.start_time or job.schedule.end_time:
                 w_start = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else "00:00"
                 w_end = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else "23:59"
                 time_display += f" ({w_start} – {w_end})"
-            tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
+            tol_str = self.msg.lbl_not_applicable_interval
         elif job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
-            time_display = (
-                f"Every {job.schedule.interval_value}m"
-                if self.msg.locale == "en"
-                else f"A cada {job.schedule.interval_value}m"
-            )
+            time_display = self.msg.lbl_every_minutes_title.format(val=job.schedule.interval_value)
             if job.schedule.start_time or job.schedule.end_time:
                 w_start = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else "00:00"
                 w_end = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else "23:59"
                 time_display += f" ({w_start} – {w_end})"
-            tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
+            tol_str = self.msg.lbl_not_applicable_interval
         else:
             if len(job.schedule.times_of_day) > 1:
                 time_display = ", ".join(t.strftime("%H:%M") for t in job.schedule.times_of_day)
@@ -791,7 +793,7 @@ class DashboardScreen(Screen):
         elif isinstance(job.target, HerdrTargetConfig):
             target_str = f"{self.msg.target_opt_herdr} (Space: '{job.target.space}', Tab: '{job.target.tab_template}')"
         else:
-            target_str = f"{self.msg.target_opt_background} (Headless)"
+            target_str = f"{self.msg.target_opt_background} ({self.msg.target_opt_headless})"
 
         folder_info = f"[dim]{self.msg.lbl_prop_folder}:[/]    [bold]{job.folder}[/]\n" if job.folder else ""
 

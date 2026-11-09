@@ -238,7 +238,7 @@ class JobFormModal(ModalScreen[Job | None]):
                     with VerticalScroll(classes="tab-scroll"):
                         yield Label(self.msg.lbl_job_name, classes="field-label")
                         yield Input(
-                            placeholder="e.g. Daily PR Review",
+                            placeholder=self.msg.placeholder_job_name,
                             id="inp-name",
                             value=self.job.name if self.job else "",
                         )
@@ -389,7 +389,7 @@ class JobFormModal(ModalScreen[Job | None]):
                                 else ""
                             )
                             yield Input(
-                                placeholder="e.g. 09:00 or 9am (optional)",
+                                placeholder=self.msg.placeholder_time_window_start,
                                 id="inp-interval-start-time",
                                 value=initial_start_val,
                             )
@@ -400,7 +400,7 @@ class JobFormModal(ModalScreen[Job | None]):
                                 else ""
                             )
                             yield Input(
-                                placeholder="e.g. 18:00 or 6pm (optional)",
+                                placeholder=self.msg.placeholder_time_window_end,
                                 id="inp-interval-end-time",
                                 value=initial_end_val,
                             )
@@ -451,7 +451,7 @@ class JobFormModal(ModalScreen[Job | None]):
                         with Vertical(id="target-terminal-box", classes="target-box"):
                             yield Label(self.msg.lbl_terminal_app, classes="field-label")
                             term_apps = [
-                                ("Auto-detect", "auto"),
+                                (self.msg.target_opt_auto_detect, "auto"),
                                 ("Terminal.app", "terminal"),
                                 ("Ghostty", "ghostty"),
                                 ("iTerm2", "iterm2"),
@@ -467,7 +467,7 @@ class JobFormModal(ModalScreen[Job | None]):
                                 else "Roostr"
                             )
                             yield Input(
-                                placeholder="e.g. Roostr or Personal",
+                                placeholder=self.msg.placeholder_herdr_space,
                                 id="inp-herdr-space",
                                 value=herdr_space,
                             )

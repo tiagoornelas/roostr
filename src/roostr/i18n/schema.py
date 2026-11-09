@@ -152,7 +152,54 @@ class Messages:
     settings_language: str
     btn_close: str
 
-    # Notifications
+    # Modals common / Folder & Move
+    lbl_select_target_folder: str
+    lbl_folder_name_rules: str
+    placeholder_folder_name: str
+    err_folder_empty: str
+    err_folder_hierarchy: str
+
+    # Form Placeholders & Options
+    placeholder_job_name: str
+    placeholder_herdr_space: str
+    placeholder_time_window_start: str
+    placeholder_time_window_end: str
+    target_opt_auto_detect: str
+    target_opt_headless: str
+
+    # Schedule & Interval Inspector Display
+    lbl_every_hours: str
+    lbl_every_minutes: str
+    lbl_every_hours_title: str
+    lbl_every_minutes_title: str
+    lbl_times_per_day: str
+    lbl_not_applicable_interval: str
+
+    # History Row Display (Status & Trigger Labels)
+    status_history_success: str
+    status_history_already_ran: str
+    status_history_outside_window: str
+    status_history_target_offline: str
+    status_history_failed: str
+    trigger_history_scheduled: str
+    trigger_history_manual: str
+
+    # Notifications & Titles
+    title_success: str
+    title_error: str
+    title_moved: str
+    title_deleted: str
+    title_cannot_delete: str
+    title_executing: str
+    title_completed: str
+    title_schedule: str
+    title_settings: str
+    title_theme: str
+    msg_error_saving_job: str
+    msg_error_moving_job: str
+    msg_error_creating_folder: str
+    msg_theme_changed: str
+    msg_language_changed: str
     notify_success_created: str
     notify_success_deleted: str
     notify_paused: str

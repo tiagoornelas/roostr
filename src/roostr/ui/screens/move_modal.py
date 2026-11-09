@@ -125,7 +125,7 @@ class MoveJobModal(ModalScreen[str | None]):
             title = f"{self.msg.modal_title_move}: {self.job.name}"
             yield Label(title, classes="move-title")
 
-            yield Label("Select target folder:", classes="field-label")
+            yield Label(self.msg.lbl_select_target_folder, classes="field-label")
 
             with ListView(id="dest-list"):
                 # Option 0: Root (No Folder)
@@ -139,8 +139,8 @@ class MoveJobModal(ModalScreen[str | None]):
                 yield DestinationItem(self.msg.lbl_create_new_folder_option, target_folder=None, is_new_action=True)
 
             with Vertical(id="new-folder-box"):
-                yield Label("New folder name (max 2 levels, e.g. Work or Work/Reports):", classes="field-label")
-                yield Input(placeholder="e.g. Work or Work/Reports", id="inp-new-folder")
+                yield Label(self.msg.lbl_folder_name_rules, classes="field-label")
+                yield Input(placeholder=self.msg.placeholder_folder_name, id="inp-new-folder")
 
             yield Label("", id="move-error")
 
@@ -198,14 +198,12 @@ class MoveJobModal(ModalScreen[str | None]):
         val = self.query_one("#inp-new-folder", Input).value.strip()
         cleaned = "/".join([p.strip() for p in val.strip("/").split("/") if p.strip()])
         if not cleaned:
-            self.query_one("#move-error", Label).update("Folder name cannot be empty.")
+            self.query_one("#move-error", Label).update(self.msg.err_folder_empty)
             return
 
         parts = cleaned.split("/")
         if len(parts) > 2:
-            self.query_one("#move-error", Label).update(
-                "Hierarchy cannot exceed 2 levels (Folder or Folder/Subfolder)."
-            )
+            self.query_one("#move-error", Label).update(self.msg.err_folder_hierarchy)
             return
 
         self.dismiss(cleaned)

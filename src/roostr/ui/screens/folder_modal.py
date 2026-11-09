@@ -75,8 +75,8 @@ class NewFolderModal(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="folder-container"):
             yield Label(self.msg.modal_title_new_folder, classes="modal-title")
-            yield Label("Folder name (up to 2 levels, e.g. Work or Work/Reports):", classes="field-label")
-            yield Input(placeholder="e.g. Work or Work/Reports", id="inp-folder-name", value=self.prefill)
+            yield Label(self.msg.lbl_folder_name_rules, classes="field-label")
+            yield Input(placeholder=self.msg.placeholder_folder_name, id="inp-folder-name", value=self.prefill)
             yield Label("", id="error-label")
 
             with Horizontal(classes="button-row"):
@@ -101,14 +101,12 @@ class NewFolderModal(ModalScreen[str | None]):
         val = self.query_one("#inp-folder-name", Input).value.strip()
         cleaned = "/".join([p.strip() for p in val.strip("/").split("/") if p.strip()])
         if not cleaned:
-            self.query_one("#error-label", Label).update("Folder name cannot be empty.")
+            self.query_one("#error-label", Label).update(self.msg.err_folder_empty)
             return
 
         parts = cleaned.split("/")
         if len(parts) > 2:
-            self.query_one("#error-label", Label).update(
-                "Hierarchy cannot exceed 2 levels (Folder or Folder/Subfolder)."
-            )
+            self.query_one("#error-label", Label).update(self.msg.err_folder_hierarchy)
             return
 
         self.dismiss(cleaned)
