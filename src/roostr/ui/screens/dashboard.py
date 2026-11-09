@@ -203,7 +203,7 @@ class DashboardScreen(Screen):
     #jobs-list > FolderHeaderItem {
         height: 1;
         padding: 0 1;
-        margin: 1 1 0 1;
+        margin: 0 1;
         background: $panel;
         color: $foreground;
         border: none;
@@ -239,7 +239,7 @@ class DashboardScreen(Screen):
     #jobs-list > SubfolderHeaderItem {
         height: 1;
         padding: 0 1 0 2;
-        margin: 1 1 0 1;
+        margin: 0 1;
         background: transparent;
         color: $secondary;
         border: none;
@@ -274,7 +274,7 @@ class DashboardScreen(Screen):
     #jobs-list > UngroupedHeaderItem {
         height: 1;
         padding: 0 1;
-        margin: 1 1 0 1;
+        margin: 0 1;
         background: transparent;
         border: none;
     }
@@ -300,18 +300,18 @@ class DashboardScreen(Screen):
     #jobs-list > JobListItem {
         height: auto;
         padding: 0 1;
-        margin: 1 1 0 1;
+        margin: 0 1;
         background: transparent;
         border: round $panel;
         color: $foreground;
     }
 
     #jobs-list > JobListItem.indent-1 {
-        margin: 1 1 0 2;
+        margin: 0 1 0 2;
     }
 
     #jobs-list > JobListItem.indent-2 {
-        margin: 1 1 0 4;
+        margin: 0 1 0 4;
     }
 
     #jobs-list > JobListItem:hover,
