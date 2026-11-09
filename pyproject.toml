@@ -1,7 +1,7 @@
 [project]
 name = "roostr"
 version = "0.1.0"
-description = "Wake up your local AI coding agents on schedule — Terminal & Herdr task runner for macOS"
+description = "Ridiculously simple scheduling & software factory alarm for AI coding agents"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
