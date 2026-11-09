@@ -1,6 +1,8 @@
+import json
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 from textual import events, on
 from textual.app import ComposeResult
@@ -9,7 +11,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 
 from roostr.application.ports import JobRepositoryPort
-from roostr.domain.enums import ExecutionStatus, ScheduleFrequency
+from roostr.domain.enums import AIHarness, ExecutionStatus, ScheduleFrequency
 from roostr.domain.models import (
     HARNESS_INFO,
     AgentAction,
@@ -127,6 +129,92 @@ class UngroupedHeaderItem(ListItem):
             yield Label(f"[dim]─── {self.label} ───[/]", classes="ungrouped-header-title")
 
 
+def find_claude_session_id(cwd: str, dt: datetime) -> str | None:
+    try:
+        sanitized = cwd.replace("/", "-")
+        pdir = Path.home() / ".claude" / "projects" / sanitized
+        if not pdir.exists():
+            return None
+
+        target_ts = dt.timestamp()
+        candidates: list[tuple[float, str]] = []
+        for f in pdir.glob("*.jsonl"):
+            if len(f.stem) < 20:
+                continue
+            mtime = f.stat().st_mtime
+            diff = abs(mtime - target_ts)
+            if diff <= 14400:  # 4 hours tolerance
+                candidates.append((diff, f.stem))
+
+        if candidates:
+            candidates.sort(key=lambda x: x[0])
+            return candidates[0][1]
+    except Exception:
+        pass
+    return None
+
+
+def get_session_command(job: Job, dt: datetime) -> str:
+    cwd = job.cwd
+    if isinstance(job.action, AgentAction):
+        match job.action.harness:
+            case AIHarness.CLAUDE:
+                sess_id = find_claude_session_id(cwd, dt)
+                if sess_id:
+                    return f'cd "{cwd}" && claude --resume {sess_id}'
+                return f'cd "{cwd}" && claude --resume'
+            case AIHarness.ANTIGRAVITY:
+                return f'cd "{cwd}" && agy'
+            case AIHarness.CURSOR:
+                return f'cd "{cwd}" && cursor'
+            case AIHarness.CODEX:
+                return f'cd "{cwd}" && codex'
+    return f'cd "{cwd}" && {job.command}'
+
+
+def try_redirect_to_herdr_tab(tab_id: str) -> tuple[bool, str]:
+    try:
+        res = subprocess.run(
+            ["herdr-app", "ls"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if res.returncode != 0 or not res.stdout.strip():
+            return False, "Herdr is offline"
+
+        data = json.loads(res.stdout)
+        for space in data.get("spaces", []):
+            space_id = space.get("id")
+            for tab in space.get("tabs", []):
+                if tab.get("id") == tab_id:
+                    tab_name = tab.get("name") or "Tab"
+                    if space_id:
+                        subprocess.run(
+                            ["herdr-app", "do", "space.select", "--id", space_id],
+                            capture_output=True,
+                            timeout=2,
+                            check=False,
+                        )
+                    subprocess.run(
+                        ["herdr-app", "do", "tab.select", "--id", tab_id],
+                        capture_output=True,
+                        timeout=2,
+                        check=False,
+                    )
+                    subprocess.run(
+                        ["osascript", "-e", 'tell application "Herdr" to activate'],
+                        capture_output=True,
+                        timeout=2,
+                        check=False,
+                    )
+                    return True, tab_name
+    except Exception:
+        pass
+    return False, "Tab not found"
+
+
 class ExecutionRow(Static):
     DEFAULT_CSS = """
     ExecutionRow {
@@ -147,13 +235,15 @@ class ExecutionRow(Static):
         self,
         record: ExecutionRecord,
         cleaned_details: str,
-        attach_cmd: str | None,
+        herdr_tab_id: str | None,
+        job: Job,
         msg: Messages,
     ):
         super().__init__()
         self.record = record
         self.cleaned_details = cleaned_details
-        self.attach_cmd = attach_cmd
+        self.herdr_tab_id = herdr_tab_id
+        self.job = job
         self.msg = msg
 
     def on_mount(self) -> None:
@@ -162,26 +252,37 @@ class ExecutionRow(Static):
         if self.record.status == ExecutionStatus.FAILED:
             color = "red"
 
-        copy_hint = f"  [dim cyan]{self.msg.lbl_click_to_copy}[/]" if self.attach_cmd else ""
+        copy_hint = f"  [dim cyan]{self.msg.lbl_click_to_copy}[/]"
         self.update(
             f"[dim]{ts}[/] [{color}]{self.record.status.value}[/] ([dim]{self.record.trigger_type.value}[/]): {self.cleaned_details}{copy_hint}"
         )
 
     def on_click(self, event: events.Click) -> None:
-        to_copy = self.attach_cmd or self.record.details
+        # 1. If tab is known, try redirecting directly to Herdr tab
+        if self.herdr_tab_id:
+            redirected, tab_name = try_redirect_to_herdr_tab(self.herdr_tab_id)
+            if redirected:
+                self.app.notify(
+                    self.msg.notify_redirected_herdr.format(tab=tab_name),
+                    title="Herdr",
+                )
+                return
+
+        # 2. Otherwise copy the specific terminal session command to clipboard
+        cmd = get_session_command(self.job, self.record.timestamp)
         try:
-            subprocess.run(["pbcopy"], input=to_copy.encode("utf-8"), check=True)
+            subprocess.run(["pbcopy"], input=cmd.encode("utf-8"), check=True)
         except Exception:
             pass
         try:
-            self.app.copy_to_clipboard(to_copy)
+            self.app.copy_to_clipboard(cmd)
         except Exception:
             pass
 
-        if self.attach_cmd:
-            self.app.notify(self.msg.notify_copied_attach.format(cmd=self.attach_cmd), title="Attach Command")
-        else:
-            self.app.notify(self.msg.notify_copied_log, title="Log")
+        self.app.notify(
+            self.msg.notify_copied_attach.format(cmd=cmd),
+            title="Terminal Session",
+        )
 
 
 class DashboardScreen(Screen):
@@ -714,11 +815,11 @@ class DashboardScreen(Screen):
         if recent_records:
             for rec in recent_records:
                 match = re.search(r"\b(tb[a-f0-9]{20,})\b", rec.details)
-                attach_cmd = f"hc attach {match.group(1)}" if match else None
+                herdr_tab_id = match.group(1) if match else None
 
                 cleaned = re.sub(r"\btb[a-f0-9]{20,}\b\s*", "", rec.details)
                 cleaned = re.sub(r"in tab\s+\('", "in ('", cleaned)
 
-                history_container.mount(ExecutionRow(rec, cleaned, attach_cmd, self.msg))
+                history_container.mount(ExecutionRow(rec, cleaned, herdr_tab_id, job, self.msg))
         else:
             history_container.mount(Label(f"[dim]{self.msg.empty_history_text}[/]"))

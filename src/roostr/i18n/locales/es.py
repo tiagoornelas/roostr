@@ -62,9 +62,10 @@ ES_MESSAGES = Messages(
     tol_hours_window_desc="Ventana de {hours}h",
     # History & Execution Row
     empty_history_text="Aún no hay ejecuciones registradas.",
-    lbl_click_to_copy="(clic para copiar sesión)",
-    notify_copied_attach="Copiado: {cmd}",
+    lbl_click_to_copy="(clic para abrir / copiar sesión)",
+    notify_copied_attach="Comando de sesión copiado: {cmd}",
     notify_copied_log="Detalles del registro copiados al portapapeles",
+    notify_redirected_herdr="Redirigido a la pestaña '{tab}' en Herdr",
     # Form modal
     modal_title_new="Crear Nuevo Job de Agente",
     modal_title_edit="Editar Job de Agente",

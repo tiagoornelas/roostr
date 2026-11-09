@@ -62,9 +62,10 @@ EN_MESSAGES = Messages(
     tol_hours_window_desc="{hours}h window",
     # History & Execution Row
     empty_history_text="No executions recorded yet.",
-    lbl_click_to_copy="(click to copy session)",
-    notify_copied_attach="Copied: {cmd}",
+    lbl_click_to_copy="(click to open / copy session)",
+    notify_copied_attach="Session command copied: {cmd}",
     notify_copied_log="Copied log details to clipboard",
+    notify_redirected_herdr="Redirected to Herdr tab '{tab}'",
     # Form modal
     modal_title_new="Create Scheduled Agent Job",
     modal_title_edit="Edit Agent Job",

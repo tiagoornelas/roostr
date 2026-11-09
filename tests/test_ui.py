@@ -273,6 +273,11 @@ async def test_app_execution_row_click_copies_session(storage, sample_job, monke
     )
 
     copied = []
+    # Mock redirect to return False (tab offline) to test copying session command
+    monkeypatch.setattr(
+        "roostr.ui.screens.dashboard.try_redirect_to_herdr_tab",
+        lambda tab_id: (False, "offline"),
+    )
     monkeypatch.setattr(
         "roostr.ui.screens.dashboard.subprocess.run",
         lambda cmd, **kwargs: copied.append(kwargs.get("input", b"").decode()),
@@ -283,13 +288,51 @@ async def test_app_execution_row_click_copies_session(storage, sample_job, monke
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         row = app.query_one(ExecutionRow)
-        assert row.attach_cmd == "hc attach tb67c2d071c57613cb47463761c70ee3e1"
+        assert row.herdr_tab_id == "tb67c2d071c57613cb47463761c70ee3e1"
         assert "tb67c2d071c57613cb47463761c70ee3e1" not in row.cleaned_details
 
         await pilot.click(row)
         await pilot.pause()
 
-        assert "hc attach tb67c2d071c57613cb47463761c70ee3e1" in copied
+        expected_cmd = f'cd "{sample_job.cwd}" && {sample_job.command}'
+        assert expected_cmd in copied
+
+
+@pytest.mark.asyncio
+async def test_app_execution_row_click_redirects_to_herdr(storage, sample_job, monkeypatch):
+    from datetime import datetime
+
+    from roostr.domain.enums import TriggerType
+    from roostr.domain.models import ExecutionRecord
+    from roostr.ui.screens.dashboard import ExecutionRow
+
+    storage.save_job(sample_job)
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=sample_job.id,
+            timestamp=datetime(2026, 11, 9, 8, 1, 2),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+            details="Opened terminal in tab tb67c2d071c57613cb47463761c70ee3e1 ('Daily 09/11')",
+        )
+    )
+
+    redirect_calls = []
+    monkeypatch.setattr(
+        "roostr.ui.screens.dashboard.try_redirect_to_herdr_tab",
+        lambda tab_id: (redirect_calls.append(tab_id) or True, "Daily 09/11"),
+    )
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        row = app.query_one(ExecutionRow)
+        await pilot.click(row)
+        await pilot.pause()
+
+        assert "tb67c2d071c57613cb47463761c70ee3e1" in redirect_calls
 
 
 @pytest.mark.asyncio

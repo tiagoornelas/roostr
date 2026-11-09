@@ -73,6 +73,7 @@ class Messages:
     lbl_click_to_copy: str
     notify_copied_attach: str
     notify_copied_log: str
+    notify_redirected_herdr: str
 
     # Form modal
     modal_title_new: str
