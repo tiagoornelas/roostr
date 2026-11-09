@@ -44,6 +44,33 @@ def test_generate_plist(sample_job, tmp_path):
     assert "review-pr.log" in data["StandardOutPath"]
 
 
+def test_generate_plist_interval(tmp_path):
+    from roostr.domain.enums import ScheduleFrequency
+
+    job = Job(
+        id="interval-job",
+        name="Interval Job",
+        cwd="/tmp",
+        command="echo interval",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1),
+            frequency=ScheduleFrequency.INTERVAL_HOURS,
+            interval_value=3,
+        ),
+        target=TerminalTargetConfig(),
+    )
+    adapter = LaunchdSchedulerAdapter(
+        agents_dir=tmp_path / "LaunchAgents",
+        logs_dir=tmp_path / "Logs",
+        binary_path=Path("/usr/local/bin/roostr"),
+    )
+    plist_xml = adapter.generate_plist_xml(job)
+    data = plistlib.loads(plist_xml.encode("utf-8"))
+
+    assert data["StartInterval"] == 3 * 3600
+    assert "StartCalendarInterval" not in data
+
+
 def test_install_and_uninstall(sample_job, tmp_path):
     runner_mock = MagicMock()
     adapter = LaunchdSchedulerAdapter(
@@ -68,3 +95,39 @@ def test_install_and_uninstall(sample_job, tmp_path):
     args = runner_mock.call_args[0][0]
     assert "launchctl" in args
     assert "unload" in args
+
+
+def test_launchd_service_adapter(tmp_path):
+    from roostr.infrastructure.launchd import LaunchdServiceAdapter
+
+    runner_mock = MagicMock()
+    runner_mock.return_value.returncode = 0
+    adapter = LaunchdServiceAdapter(
+        agents_dir=tmp_path / "LaunchAgents",
+        logs_dir=tmp_path / "Logs",
+        binary_path=Path("/usr/local/bin/roostr"),
+        cmd_runner=runner_mock,
+    )
+
+    xml = adapter.generate_plist_xml()
+    data = plistlib.loads(xml.encode("utf-8"))
+    assert data["Label"] == "com.tiagoornelas.roostr.daemon"
+    assert data["ProgramArguments"] == ["/usr/local/bin/roostr", "daemon", "run"]
+    assert data["RunAtLoad"] is True
+    assert data["KeepAlive"] is True
+    assert "roostr-daemon.log" in data["StandardOutPath"]
+
+    plist_path = adapter.install()
+    assert plist_path.exists()
+    assert runner_mock.call_count == 2
+
+    assert adapter.is_running() is True
+
+    adapter.start()
+    assert runner_mock.call_args[0][0] == ["launchctl", "start", "com.tiagoornelas.roostr.daemon"]
+
+    adapter.stop()
+    assert runner_mock.call_args[0][0] == ["launchctl", "stop", "com.tiagoornelas.roostr.daemon"]
+
+    adapter.uninstall()
+    assert not plist_path.exists()

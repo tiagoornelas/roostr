@@ -7,6 +7,12 @@ class ToleranceMode(StrEnum):
     WINDOW_HOURS = "window_hours"
 
 
+class ScheduleFrequency(StrEnum):
+    DAILY = "daily"
+    INTERVAL_HOURS = "interval_hours"
+    INTERVAL_MINUTES = "interval_minutes"
+
+
 class TriggerType(StrEnum):
     SCHEDULED = "scheduled"
     MANUAL = "manual"
@@ -32,3 +38,15 @@ class TerminalApp(StrEnum):
     ITERM2 = "iterm2"
     GHOSTTY = "ghostty"
     KITTY = "kitty"
+
+
+class ActionType(StrEnum):
+    COMMAND = "command"
+    AGENT = "agent"
+
+
+class AIHarness(StrEnum):
+    CLAUDE = "claude"
+    ANTIGRAVITY = "antigravity"
+    CURSOR = "cursor"
+    CODEX = "codex"

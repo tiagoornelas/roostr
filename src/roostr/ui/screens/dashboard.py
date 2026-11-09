@@ -9,8 +9,10 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 
 from roostr.application.ports import JobRepositoryPort
-from roostr.domain.enums import ExecutionStatus
+from roostr.domain.enums import ExecutionStatus, ScheduleFrequency
 from roostr.domain.models import (
+    HARNESS_INFO,
+    AgentAction,
     BackgroundTargetConfig,
     ExecutionRecord,
     HerdrTargetConfig,
@@ -47,11 +49,24 @@ class JobListItem(ListItem):
             badge_markup = f"[bold yellow]{self.msg.status_waiting}[/]"
             name_markup = f"[bold]{self.job.name}[/]"
 
-        sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
+        if self.job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
+            sched_str = (
+                f"every {self.job.schedule.interval_value}h"
+                if self.msg.locale == "en"
+                else f"a cada {self.job.schedule.interval_value}h"
+            )
+        elif self.job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
+            sched_str = (
+                f"every {self.job.schedule.interval_value}m"
+                if self.msg.locale == "en"
+                else f"a cada {self.job.schedule.interval_value}m"
+            )
+        else:
+            sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
         if len(self.job.schedule.days_of_week) == 5 and self.job.schedule.days_of_week == (0, 1, 2, 3, 4):
-            days_str = "Mon–Fri" if self.msg.locale == "en" else "Seg–Sex"
+            days_str = self.msg.days_weekdays_short
         elif len(self.job.schedule.days_of_week) == 7:
-            days_str = "Daily" if self.msg.locale == "en" else "Diário"
+            days_str = self.msg.days_everyday_short
         else:
             days_str = f"{len(self.job.schedule.days_of_week)}d"
 
@@ -59,9 +74,9 @@ class JobListItem(ListItem):
         if isinstance(self.job.target, HerdrTargetConfig):
             target_name = f"Herdr ({self.job.target.space})" if self.job.target.space else "Herdr"
         elif isinstance(self.job.target, BackgroundTargetConfig):
-            target_name = "Background"
+            target_name = self.msg.target_opt_background_short
         elif isinstance(self.job.target, TerminalTargetConfig):
-            target_name = "Terminal"
+            target_name = self.msg.target_opt_terminal_short
 
         with Horizontal(classes="job-card-top"):
             yield Label(f"{status_dot} {name_markup}", classes="job-card-name")
@@ -147,7 +162,7 @@ class ExecutionRow(Static):
         if self.record.status == ExecutionStatus.FAILED:
             color = "red"
 
-        copy_hint = "  [dim cyan](click to copy session)[/]" if self.attach_cmd else ""
+        copy_hint = f"  [dim cyan]{self.msg.lbl_click_to_copy}[/]" if self.attach_cmd else ""
         self.update(
             f"[dim]{ts}[/] [{color}]{self.record.status.value}[/] ([dim]{self.record.trigger_type.value}[/]): {self.cleaned_details}{copy_hint}"
         )
@@ -164,9 +179,9 @@ class ExecutionRow(Static):
             pass
 
         if self.attach_cmd:
-            self.app.notify(f"Copied: {self.attach_cmd}", title="Attach Command")
+            self.app.notify(self.msg.notify_copied_attach.format(cmd=self.attach_cmd), title="Attach Command")
         else:
-            self.app.notify("Copied log details to clipboard", title="Log")
+            self.app.notify(self.msg.notify_copied_log, title="Log")
 
 
 class DashboardScreen(Screen):
@@ -433,6 +448,13 @@ class DashboardScreen(Screen):
     def update_messages(self, messages: Messages) -> None:
         self.msg = messages
         self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
+        focused = self.get_current_focused_item()
+        if isinstance(focused, FolderHeaderItem):
+            self.show_folder_details(focused.folder_name, focused.count, is_subfolder=False)
+        elif isinstance(focused, SubfolderHeaderItem):
+            self.show_folder_details(focused.subfolder_key, focused.count, is_subfolder=True)
+        elif self.selected_job:
+            self.show_job_details(self.selected_job)
 
     def refresh_jobs(self, selected_job_id: str | None = None) -> None:
         jobs_list = self.query_one("#jobs-list", ListView)
@@ -571,15 +593,15 @@ class DashboardScreen(Screen):
             if hasattr(self.app, "current_theme") and self.app.current_theme
             else "#ffffff"
         )
-        folder_type = "Subfolder" if is_subfolder else "Folder"
+        folder_type = self.msg.lbl_subfolder_title if is_subfolder else self.msg.lbl_folder_title
         details_markup = f"""
 [bold size=14]{folder_name.upper()}[/]  [dim]({folder_type})[/]
-[dim]Active Jobs:[/]  [bold]{count}[/]
+[dim]{self.msg.inspector_active_jobs}:[/]  [bold]{count}[/]
 
-[bold {primary_color}]FOLDER ACTIONS[/]
-[dim]• Press [bold white]m[/] on any job to move it into this folder.[/]
-[dim]• Press [bold white]f[/] to create a new folder or subfolder.[/]
-[dim]• Press [bold white]d[/] to delete this folder (if empty).[/]
+[bold {primary_color}]{self.msg.folder_actions_title}[/]
+[dim]• {self.msg.folder_action_move}[/]
+[dim]• {self.msg.folder_action_create}[/]
+[dim]• {self.msg.folder_action_delete}[/]
 """
         self.query_one("#inspector-details", Static).update(details_markup)
         history_container = self.query_one("#inspector-history", Vertical)
@@ -599,62 +621,51 @@ class DashboardScreen(Screen):
         else:
             status_text = f"[bold yellow]{self.msg.status_waiting}[/]"
 
-        # Format tolerance
-        if job.schedule.tolerance_mode.value == "exact":
-            tol_str = "Exact time" if self.msg.locale == "en" else "Horário exato"
-        elif job.schedule.tolerance_mode.value == "until_hour":
-            tol_str = (
-                f"Until {job.schedule.tolerance_value:02d}:00"
+        # Format schedule and tolerance
+        if job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
+            time_display = (
+                f"Every {job.schedule.interval_value}h"
                 if self.msg.locale == "en"
-                else f"Até às {job.schedule.tolerance_value:02d}:00"
+                else f"A cada {job.schedule.interval_value}h"
             )
+            tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
+        elif job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
+            time_display = (
+                f"Every {job.schedule.interval_value}m"
+                if self.msg.locale == "en"
+                else f"A cada {job.schedule.interval_value}m"
+            )
+            tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
         else:
-            tol_str = (
-                f"{job.schedule.tolerance_value}h window"
-                if self.msg.locale == "en"
-                else f"Janela de {job.schedule.tolerance_value}h"
-            )
+            time_display = job.schedule.time_of_day.strftime("%H:%M")
+            if job.schedule.tolerance_mode.value == "exact":
+                tol_str = self.msg.tol_exact_desc
+            elif job.schedule.tolerance_mode.value == "until_hour":
+                tol_str = self.msg.tol_until_hour_desc.format(hour=f"{job.schedule.tolerance_value:02d}:00")
+            else:
+                tol_str = self.msg.tol_hours_window_desc.format(hours=job.schedule.tolerance_value)
 
         # Format semantic days
-        days_names_en = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
-        days_names_pt = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
-        days_names_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
-
-        if self.msg.locale == "pt_br":
-            days_map = days_names_pt
-            weekdays_lbl = "Dias úteis (Segunda a Sexta)"
-            everyday_lbl = "Todos os dias"
-            weekend_lbl = "Fim de semana (Sábado e Domingo)"
-        elif self.msg.locale == "es":
-            days_map = days_names_es
-            weekdays_lbl = "Días laborables (Lunes a Viernes)"
-            everyday_lbl = "Todos los días"
-            weekend_lbl = "Fin de semana (Sábado y Domingo)"
-        else:
-            days_map = days_names_en
-            weekdays_lbl = "Weekdays (Monday to Friday)"
-            everyday_lbl = "Every day"
-            weekend_lbl = "Weekends (Saturday and Sunday)"
-
         days = sorted(job.schedule.days_of_week)
         if len(days) == 5 and days == [0, 1, 2, 3, 4]:
-            days_semantic = weekdays_lbl
+            days_semantic = self.msg.days_weekdays_full
         elif len(days) == 7:
-            days_semantic = everyday_lbl
+            days_semantic = self.msg.days_everyday_full
         elif len(days) == 2 and days == [5, 6]:
-            days_semantic = weekend_lbl
+            days_semantic = self.msg.days_weekend_full
         else:
-            days_semantic = ", ".join(days_map.get(d, str(d)) for d in days)
+            abbrs = self.msg.days_names_abbr
+            days_semantic = ", ".join(abbrs[d] if 0 <= d < len(abbrs) else str(d) for d in days)
 
         # Format target
         if isinstance(job.target, TerminalTargetConfig):
-            target_str = f"Terminal Window (App: {job.target.app.value})"
+            target_str = f"{self.msg.target_opt_terminal} (App: {job.target.app.value})"
         elif isinstance(job.target, HerdrTargetConfig):
-            target_str = f"Herdr App (Space: '{job.target.space}', Tab: '{job.target.tab_template}')"
+            target_str = f"{self.msg.target_opt_herdr} (Space: '{job.target.space}', Tab: '{job.target.tab_template}')"
         else:
-            target_str = "Background Process (Headless)"
+            target_str = f"{self.msg.target_opt_background} (Headless)"
 
-        folder_info = f"[dim]Folder:[/]    [bold]{job.folder}[/]\n" if job.folder else ""
+        folder_info = f"[dim]{self.msg.lbl_prop_folder}:[/]    [bold]{job.folder}[/]\n" if job.folder else ""
 
         primary_color = (
             self.app.current_theme.primary
@@ -662,21 +673,36 @@ class DashboardScreen(Screen):
             else "#ffffff"
         )
 
+        if isinstance(job.action, AgentAction):
+            info = HARNESS_INFO.get(job.action.harness)
+            harness_name = info.display_name if info else job.action.harness.value
+            harness_color = info.color if info else "#ffffff"
+            harness_cli = info.cli if info else job.action.harness.value
+            harness_badge = f"[bold {harness_color}]{harness_name}[/] [dim]({harness_cli})[/]"
+            prompt_preview = "\n".join(f"  [italic]{line}[/]" for line in job.action.prompt.splitlines())
+            action_markup = f"""[dim]{self.msg.lbl_prop_mode}:[/]      [bold]{self.msg.lbl_action_agent}[/]
+[dim]{self.msg.lbl_prop_harness}:[/]   {harness_badge}
+[dim]{self.msg.lbl_prop_prompt}:[/]
+{prompt_preview}"""
+        else:
+            action_markup = f"""[dim]{self.msg.lbl_prop_mode}:[/]      [bold]{self.msg.lbl_action_command}[/]
+[dim]{self.msg.lbl_prop_command}:[/]   [bold green]{job.command}[/]"""
+
         details_markup = f"""
 [bold size=14]{job.name}[/]  {status_text}
-[dim]ID: {job.id} • Created: {job.created_at.strftime("%Y-%m-%d")} • Total runs: [bold]{total_runs}[/][/]
+[dim]ID: {job.id} • {self.msg.inspector_created}: {job.created_at.strftime("%Y-%m-%d")} • {self.msg.inspector_total_runs}: [bold]{total_runs}[/][/]
 {folder_info}
 [bold {primary_color}]{self.msg.inspector_target}[/]
 [bold]{target_str}[/]
 
 [bold {primary_color}]{self.msg.inspector_schedule}[/]
-[dim]Time:[/]      [bold]{job.schedule.time_of_day.strftime("%H:%M")}[/]
-[dim]Days:[/]      [bold]{days_semantic}[/]
-[dim]Policy:[/]    [bold]{tol_str}[/]
+[dim]{self.msg.lbl_prop_time}:[/]      [bold]{time_display}[/]
+[dim]{self.msg.lbl_prop_days}:[/]      [bold]{days_semantic}[/]
+[dim]{self.msg.lbl_prop_policy}:[/]    [bold]{tol_str}[/]
 
 [bold {primary_color}]{self.msg.inspector_execution}[/]
-[dim]CWD:[/]       [bold]{job.cwd}[/]
-[dim]Command:[/]   [bold green]{job.command}[/]
+[dim]{self.msg.lbl_prop_cwd}:[/]       [bold]{job.cwd}[/]
+{action_markup}
 
 [bold {primary_color}]{self.msg.inspector_history}[/]
 """
@@ -695,4 +721,4 @@ class DashboardScreen(Screen):
 
                 history_container.mount(ExecutionRow(rec, cleaned, attach_cmd, self.msg))
         else:
-            history_container.mount(Label("[dim]No executions recorded yet.[/]"))
+            history_container.mount(Label(f"[dim]{self.msg.empty_history_text}[/]"))

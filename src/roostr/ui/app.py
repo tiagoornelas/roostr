@@ -1,3 +1,5 @@
+import dataclasses
+
 from textual import work
 from textual.app import App
 from textual.binding import Binding
@@ -64,6 +66,13 @@ class RoostrApp(App):
         selected_theme = theme if theme in THEME_NAMES else DEFAULT_THEME
         self.theme = selected_theme
 
+        # Persist theme and locale
+        if hasattr(self.storage, "set_setting"):
+            self.storage.set_setting("locale", self.locale)
+            self.storage.set_setting("theme", self.theme)
+
+        self._update_bindings_language()
+
         # Register Roostr program in Herdr if Herdr is present
         try:
             register_herdr_program()
@@ -108,7 +117,7 @@ class RoostrApp(App):
                 try:
                     self.manage_use_case.move_job(job.id, dest)
                     dest_display = dest if dest else "Root (No Folder)"
-                    self.notify(f"Job '{job.name}' moved to {dest_display}.", title="Moved")
+                    self.notify(self.msg.notify_moved.format(name=job.name, dest=dest_display), title="Moved")
                     self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
                 except Exception as e:
                     self.notify(f"Error moving job: {e}", title="Error", severity="error")
@@ -125,7 +134,7 @@ class RoostrApp(App):
             if folder_name:
                 try:
                     self.manage_use_case.create_folder(folder_name)
-                    self.notify(f"Folder '{folder_name}' created.", title="Success")
+                    self.notify(self.msg.notify_folder_created.format(name=folder_name), title="Success")
                     self.dashboard_screen.refresh_jobs()
                 except Exception as e:
                     self.notify(f"Error creating folder: {e}", title="Error", severity="error")
@@ -169,7 +178,7 @@ class RoostrApp(App):
             fn = focused.folder_name
             try:
                 self.manage_use_case.delete_folder(fn)
-                self.notify(f"Folder '{fn}' deleted.", title="Deleted", severity="information")
+                self.notify(self.msg.notify_folder_deleted.format(name=fn), title="Deleted", severity="information")
                 self.dashboard_screen.refresh_jobs()
             except ValueError as e:
                 self.notify(str(e), title="Cannot Delete", severity="warning")
@@ -178,7 +187,7 @@ class RoostrApp(App):
             sk = focused.subfolder_key
             try:
                 self.manage_use_case.delete_folder(sk)
-                self.notify(f"Subfolder '{sk}' deleted.", title="Deleted", severity="information")
+                self.notify(self.msg.notify_folder_deleted.format(name=sk), title="Deleted", severity="information")
                 self.dashboard_screen.refresh_jobs()
             except ValueError as e:
                 self.notify(str(e), title="Cannot Delete", severity="warning")
@@ -193,6 +202,47 @@ class RoostrApp(App):
         self.notify(deleted_msg, title="Deleted", severity="information")
         self.dashboard_screen.refresh_jobs()
 
+    def _update_bindings_language(self) -> None:
+        key_descriptions = {
+            "n": self.msg.key_new_job,
+            "r": self.msg.key_run_now,
+            "m": self.msg.key_move_job,
+            "f": self.msg.key_new_folder,
+            "p": self.msg.key_toggle_pause,
+            "d": self.msg.key_delete_job,
+            "s": self.msg.key_settings,
+            "q": self.msg.key_quit,
+        }
+        if hasattr(self, "_bindings") and hasattr(self._bindings, "key_to_bindings"):
+            for key, desc in key_descriptions.items():
+                if key in self._bindings.key_to_bindings:
+                    bindings_list = self._bindings.key_to_bindings[key]
+                    for i, b in enumerate(bindings_list):
+                        bindings_list[i] = dataclasses.replace(b, description=desc)
+
+    def set_theme(self, new_theme: str) -> None:
+        self.theme = new_theme
+        if hasattr(self.storage, "set_setting"):
+            self.storage.set_setting("theme", new_theme)
+        self.dashboard_screen.update_theme(new_theme)
+
+    def set_locale(self, new_locale: str) -> None:
+        self.locale = new_locale
+        self.msg = get_messages(self.locale)
+        if hasattr(self.storage, "set_setting"):
+            self.storage.set_setting("locale", new_locale)
+
+        self._update_bindings_language()
+
+        self.dashboard_screen.update_messages(self.msg)
+        try:
+            from textual.widgets import Footer
+
+            footer = self.query_one(Footer)
+            footer.refresh()
+        except Exception:
+            pass
+
     def action_open_settings(self) -> None:
         def on_settings_result(result: dict | None) -> None:
             if not result:
@@ -201,14 +251,11 @@ class RoostrApp(App):
             new_locale = result.get("locale")
 
             if new_theme and new_theme != self.theme:
-                self.theme = new_theme
-                self.dashboard_screen.update_theme(new_theme)
+                self.set_theme(new_theme)
                 self.notify(f"Theme: {new_theme}", title="Settings")
 
             if new_locale and new_locale != self.locale:
-                self.locale = new_locale
-                self.msg = get_messages(self.locale)
-                self.dashboard_screen.update_messages(self.msg)
+                self.set_locale(new_locale)
                 self.notify(f"Language: {self.locale.upper()}", title="Settings")
 
         self.push_screen(
@@ -223,14 +270,11 @@ class RoostrApp(App):
     def action_switch_theme(self) -> None:
         current_idx = THEME_NAMES.index(self.theme) if self.theme in THEME_NAMES else 0
         next_theme = THEME_NAMES[(current_idx + 1) % len(THEME_NAMES)]
-        self.theme = next_theme
-        self.dashboard_screen.update_theme(next_theme)
+        self.set_theme(next_theme)
         self.notify(f"Theme changed to {next_theme}", title="Theme")
 
     def action_switch_language(self) -> None:
         current_idx = SUPPORTED_LOCALES.index(self.locale) if self.locale in SUPPORTED_LOCALES else 0
         next_locale = SUPPORTED_LOCALES[(current_idx + 1) % len(SUPPORTED_LOCALES)]
-        self.locale = next_locale
-        self.msg = get_messages(self.locale)
-        self.dashboard_screen.update_messages(self.msg)
+        self.set_locale(next_locale)
         self.notify(f"Language changed to {self.locale.upper()}", title="i18n")

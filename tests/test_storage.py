@@ -68,6 +68,37 @@ def test_save_and_retrieve_herdr_job(storage):
     assert fetched.target.tab_template == "Daily {DD}/{MM}"
 
 
+def test_save_and_retrieve_agent_action_job(storage):
+    from roostr.domain.enums import ActionType, AIHarness
+    from roostr.domain.models import AgentAction
+
+    multiline_prompt = "Line 1: Search repo\nLine 2: 'quoted' instruction"
+    job = Job(
+        id="agent-job",
+        name="Agent Job",
+        cwd="/tmp",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1),
+            time_of_day=time(9, 30),
+            tolerance_mode=ToleranceMode.EXACT,
+            tolerance_value=0,
+        ),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+        action=AgentAction(harness=AIHarness.CLAUDE, prompt=multiline_prompt),
+    )
+    storage.save_job(job)
+
+    fetched = storage.get_job("agent-job")
+    assert fetched is not None
+    assert fetched.action.action_type == ActionType.AGENT
+    assert isinstance(fetched.action, AgentAction)
+    assert fetched.action.harness == AIHarness.CLAUDE
+    import shlex
+
+    assert fetched.action.prompt == multiline_prompt
+    assert f"claude {shlex.quote(multiline_prompt)}" == fetched.command
+
+
 def test_record_execution_and_idempotency(storage):
     job = Job(
         id="job1",
@@ -150,3 +181,42 @@ def test_storage_folder_operations(storage):
     assert "Finance/Q4" not in storage.list_folders()
     storage.delete_folder("Finance")
     assert "Finance" not in storage.list_folders()
+
+
+def test_storage_settings(storage):
+    assert storage.get_setting("theme") is None
+    assert storage.get_setting("theme", "night") == "night"
+
+    storage.set_setting("theme", "tokyo-night")
+    assert storage.get_setting("theme") == "tokyo-night"
+
+    storage.set_setting("locale", "pt_br")
+    assert storage.get_setting("locale") == "pt_br"
+
+    # Update existing
+    storage.set_setting("theme", "nord")
+    assert storage.get_setting("theme") == "nord"
+
+
+def test_storage_save_and_retrieve_interval_job(storage):
+    from roostr.domain.enums import ScheduleFrequency
+
+    job = Job(
+        id="interval-test",
+        name="Interval Test",
+        cwd="/tmp",
+        command="echo interval",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 2, 4),
+            frequency=ScheduleFrequency.INTERVAL_MINUTES,
+            interval_value=45,
+        ),
+        target=BackgroundTargetConfig(),
+    )
+    storage.save_job(job)
+
+    fetched = storage.get_job("interval-test")
+    assert fetched is not None
+    assert fetched.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES
+    assert fetched.schedule.interval_value == 45
+    assert fetched.schedule.days_of_week == (0, 2, 4)

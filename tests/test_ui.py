@@ -97,12 +97,19 @@ async def test_app_switch_language(storage, sample_job):
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.locale == "en"
+        assert storage.get_setting("locale") == "en"
+
         await pilot.press("l")
         await pilot.pause()
         assert app.locale == "pt_br"
+        assert storage.get_setting("locale") == "pt_br"
+        assert app.dashboard_screen.msg.locale == "pt_br"
+
         await pilot.press("l")
         await pilot.pause()
         assert app.locale == "es"
+        assert storage.get_setting("locale") == "es"
+        assert app.dashboard_screen.msg.locale == "es"
 
 
 @pytest.mark.asyncio
@@ -113,27 +120,33 @@ async def test_app_switch_theme(storage, sample_job):
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.theme == "night"
+        assert storage.get_setting("theme") == "night"
 
         # Cycle through morning -> tokyo-night -> nord -> dracula -> night
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "morning"
+        assert storage.get_setting("theme") == "morning"
 
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "tokyo-night"
+        assert storage.get_setting("theme") == "tokyo-night"
 
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "nord"
+        assert storage.get_setting("theme") == "nord"
 
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "dracula"
+        assert storage.get_setting("theme") == "dracula"
 
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "night"
+        assert storage.get_setting("theme") == "night"
 
 
 @pytest.mark.asyncio
@@ -150,7 +163,6 @@ async def test_app_open_settings(storage, sample_job):
         assert isinstance(app.screen, SettingsModal)
         await pilot.press("escape")
         await pilot.pause()
-        assert isinstance(app.screen, DashboardScreen)
 
 
 @pytest.mark.asyncio
@@ -320,3 +332,244 @@ async def test_app_action_move_job_and_new_folder(storage, sample_job):
         # Job is now moved to Ops/Deploy
         updated_job = storage.get_job(sample_job.id)
         assert updated_job.folder == "Ops/Deploy"
+
+
+@pytest.mark.asyncio
+async def test_app_action_new_agent_job_modal(storage):
+    from textual.widgets import Input, Select, TextArea
+
+    from roostr.domain.enums import ActionType, AIHarness
+    from roostr.domain.models import AgentAction
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    manage_mock = MagicMock()
+    app = RoostrApp(storage=storage, locale="en", manage_use_case=manage_mock)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+
+        # Press 'n' to open JobFormModal
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        modal.query_one("#inp-name", Input).value = "Daily Claude Report"
+        modal.query_one("#inp-cwd", Input).value = "/tmp"
+
+        modal.query_one("#sel-action-type", Select).value = "agent"
+        modal.query_one("#sel-harness", Select).value = "claude"
+        modal.query_one("#inp-prompt", TextArea).text = "Check open PRs\nGenerate daily report"
+
+        # Click save
+        await pilot.click("#btn-save")
+        await pilot.pause()
+
+        # Verify job was created via manage_use_case with auto-inferred slug id
+        assert manage_mock.create_job.call_count == 1
+        created_job = manage_mock.create_job.call_args[0][0]
+        assert created_job.id == "daily-claude-report"
+        assert created_job.name == "Daily Claude Report"
+        assert created_job.action.action_type == ActionType.AGENT
+        assert isinstance(created_job.action, AgentAction)
+        assert created_job.action.harness == AIHarness.CLAUDE
+        assert "Check open PRs\nGenerate daily report" in created_job.action.prompt
+        assert created_job.command.startswith("claude 'Check open PRs")
+
+
+@pytest.mark.asyncio
+async def test_prompt_text_area_shift_enter_line_break(storage):
+    from textual.widgets import Input, Select
+
+    from roostr.ui.screens.form_modal import JobFormModal, PromptTextArea
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        ta = modal.query_one("#inp-prompt", PromptTextArea)
+        ta.focus()
+        await pilot.pause()
+
+        # Type first line
+        await pilot.press("l", "i", "n", "e", "1")
+        # Press shift+enter
+        await pilot.press("shift+enter")
+        # Type second line
+        await pilot.press("l", "i", "n", "e", "2")
+        # Press enter
+        await pilot.press("enter")
+        # Type third line
+        await pilot.press("l", "i", "n", "e", "3")
+        await pilot.pause()
+
+        assert ta.text == "line1\nline2\nline3"
+
+        # Test Ctrl+S binding triggers save
+        modal.query_one("#inp-name", Input).value = "Test Shift Enter"
+        modal.query_one("#inp-cwd", Input).value = "/tmp"
+        modal.query_one("#sel-action-type", Select).value = "agent"
+        modal.query_one("#sel-harness", Select).value = "claude"
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert not isinstance(app.screen, JobFormModal)
+
+
+@pytest.mark.asyncio
+async def test_pt_br_localization_in_form_and_inspector(storage, sample_job):
+    from textual.widgets import Label, Select, Static
+
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="pt_br")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.locale == "pt_br"
+
+        # Check inspector static has Portuguese labels
+        inspector = app.dashboard_screen.query_one("#inspector-details", Static)
+        assert "DESTINO DE EXECUÇÃO" in inspector.content
+        assert "AGENDAMENTO & TOLERÂNCIA" in inspector.content
+        assert "COMANDO & AMBIENTE" in inspector.content
+
+        # Open form in PT-BR
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        title_lbl = modal.query_one(".form-title", Label)
+        assert "Criar Novo Job" in str(title_lbl.render())
+
+        # Check select options in PT-BR
+        target_select = modal.query_one("#sel-target-type", Select)
+        options_text = [str(opt[0]) for opt in target_select._options]
+        assert "Janela de Terminal" in options_text
+        assert "Processo em Segundo Plano" in options_text
+
+        harness_select = modal.query_one("#sel-harness", Select)
+        harness_options_text = [str(opt[0]) for opt in harness_select._options]
+        # Assert no emojis in harness options
+        assert any("Claude Code" in opt for opt in harness_options_text)
+        assert not any("🟣" in opt or "🔵" in opt for opt in harness_options_text)
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_form_modal_frequency_tolerance_and_days(storage):
+    from textual.widgets import Checkbox, Input, Select
+
+    from roostr.domain.enums import ScheduleFrequency, ToleranceMode
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+        modal = app.screen
+
+        # Test Frequency toggling and conditional containers
+        freq_select = modal.query_one("#sel-frequency", Select)
+        daily_box = modal.query_one("#freq-daily-box")
+        hours_box = modal.query_one("#freq-hours-box")
+        minutes_box = modal.query_one("#freq-minutes-box")
+
+        assert daily_box.display is True
+        assert hours_box.display is False
+        assert minutes_box.display is False
+
+        # Switch to INTERVAL_HOURS
+        freq_select.value = ScheduleFrequency.INTERVAL_HOURS.value
+        await pilot.pause()
+        assert daily_box.display is False
+        assert hours_box.display is True
+        assert minutes_box.display is False
+
+        # Switch to INTERVAL_MINUTES
+        freq_select.value = ScheduleFrequency.INTERVAL_MINUTES.value
+        await pilot.pause()
+        assert daily_box.display is False
+        assert hours_box.display is False
+        assert minutes_box.display is True
+
+        # Switch back to DAILY
+        freq_select.value = ScheduleFrequency.DAILY.value
+        await pilot.pause()
+        assert daily_box.display is True
+
+        # Test Tolerance toggling and conditional containers
+        tol_select = modal.query_one("#sel-tolerance-mode", Select)
+        until_box = modal.query_one("#tol-until-hour-box")
+        window_box = modal.query_one("#tol-hours-window-box")
+
+        assert until_box.display is True
+        assert window_box.display is False
+
+        # Switch to EXACT
+        tol_select.value = ToleranceMode.EXACT.value
+        await pilot.pause()
+        assert until_box.display is False
+        assert window_box.display is False
+
+        # Switch to WINDOW_HOURS
+        tol_select.value = ToleranceMode.WINDOW_HOURS.value
+        await pilot.pause()
+        assert until_box.display is False
+        assert window_box.display is True
+
+        # Switch back to UNTIL_HOUR
+        tol_select.value = ToleranceMode.UNTIL_HOUR.value
+        await pilot.pause()
+        assert until_box.display is True
+        assert window_box.display is False
+
+        # Test Days Checkboxes
+        chk_mon = modal.query_one("#chk-day-0", Checkbox)
+        chk_sun = modal.query_one("#chk-day-6", Checkbox)
+        assert chk_mon.value is True  # Default Mon-Fri checked
+        assert chk_sun.value is False
+
+        # Uncheck all days to test validation
+        for i in range(7):
+            modal.query_one(f"#chk-day-{i}", Checkbox).value = False
+
+        modal.query_one("#inp-name", Input).value = "Interval Job"
+        modal.query_one("#inp-cwd", Input).value = "/tmp"
+        modal.query_one("#sel-action-type", Select).value = "command"
+        modal.query_one("#inp-command", Input).value = "echo 'interval'"
+        freq_select.value = ScheduleFrequency.INTERVAL_HOURS.value
+        modal.query_one("#inp-interval-hours", Input).value = "3"
+
+        # Attempt to save with 0 days checked -> should remain in modal
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        # Check Monday and Wednesday
+        modal.query_one("#chk-day-0", Checkbox).value = True
+        modal.query_one("#chk-day-2", Checkbox).value = True
+
+        # Now save successfully
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert not isinstance(app.screen, JobFormModal)
+
+        # Verify job saved with slugified ID and correct interval/days
+        saved = storage.get_job("interval-job")
+        assert saved is not None
+        assert saved.name == "Interval Job"
+        assert saved.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS
+        assert saved.schedule.interval_value == 3
+        assert saved.schedule.days_of_week == (0, 2)

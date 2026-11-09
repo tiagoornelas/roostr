@@ -118,6 +118,27 @@ class HerdrTargetAdapter(ExecutionTargetPort):
             pass
         return None
 
+    def get_or_create_space_id(self, space_name: str, cwd: str) -> tuple[str | None, str | None]:
+        clean_name = space_name.strip() if space_name else "Roostr"
+        space_id = self.get_space_id(clean_name)
+        if space_id:
+            return space_id, None
+
+        try:
+            res = self._cmd_runner(
+                ["herdr-app", "do", "space.new", "--name", clean_name, "--folder", cwd],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            new_id = self.get_space_id(clean_name)
+            if new_id:
+                return new_id, None
+            return None, f"Failed to create space '{clean_name}': {res.stderr.strip()}"
+        except Exception as e:
+            return None, f"Error calling herdr-app to create space: {e}"
+
     def launch(self, job: Job, dt: datetime) -> tuple[bool, str]:
         if not self.is_running():
             return False, "Herdr is not running"
@@ -125,11 +146,12 @@ class HerdrTargetAdapter(ExecutionTargetPort):
         if not isinstance(job.target, HerdrTargetConfig):
             return False, "Job target is not configured for Herdr"
 
-        space_id = self.get_space_id(job.target.space)
+        target_space = job.target.space.strip() if job.target.space else "Roostr"
+        space_id, err = self.get_or_create_space_id(target_space, job.cwd)
         if not space_id:
-            return False, f'Space "{job.target.space}" not found in Herdr'
+            return False, err or f'Space "{target_space}" could not be created in Herdr'
 
-        terminal_name = f"{job.id}-{dt.strftime('%Y%m%d')}"
+        terminal_name = f"{job.id}-{dt.strftime('%Y%m%d-%H%M%S')}"
 
         hc_cmd = [
             "hc",

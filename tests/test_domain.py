@@ -1,7 +1,10 @@
+import shlex
 from datetime import datetime, time
 
-from roostr.domain.enums import TargetType, TerminalApp, ToleranceMode
+from roostr.domain.enums import ActionType, AIHarness, TargetType, TerminalApp, ToleranceMode
 from roostr.domain.models import (
+    HARNESS_INFO,
+    AgentAction,
     BackgroundTargetConfig,
     HerdrTargetConfig,
     Job,
@@ -61,6 +64,35 @@ def test_target_configs():
     assert bg_target.target_type == TargetType.BACKGROUND
 
 
+def test_agent_action_compilation():
+    prompt = "Review PRs.\nDon't forget tests!"
+    action_claude = AgentAction(harness=AIHarness.CLAUDE, prompt=prompt)
+    action_agy = AgentAction(harness=AIHarness.ANTIGRAVITY, prompt=prompt)
+    action_cursor = AgentAction(harness=AIHarness.CURSOR, prompt=prompt)
+    action_codex = AgentAction(harness=AIHarness.CODEX, prompt=prompt)
+
+    assert action_claude.action_type == ActionType.AGENT
+    assert f"claude {shlex.quote(prompt.strip())}" == action_claude.compile()
+    assert f"agy {shlex.quote(prompt.strip())}" == action_agy.compile()
+    assert f"cursor {shlex.quote(prompt.strip())}" == action_cursor.compile()
+    assert f"codex {shlex.quote(prompt.strip())}" == action_codex.compile()
+
+
+def test_job_with_agent_action():
+    job = Job(
+        id="daily-agent",
+        name="Daily AI Agent",
+        cwd="/tmp",
+        schedule=SchedulePolicy((0,), time(9, 0)),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+        action=AgentAction(harness=AIHarness.ANTIGRAVITY, prompt="agy prompt"),
+    )
+    assert job.command == "agy 'agy prompt'"
+    assert job.action.action_type == ActionType.AGENT
+    assert isinstance(job.action, AgentAction)
+    assert HARNESS_INFO[job.action.harness].display_name == "Antigravity"
+
+
 def test_job_folder_hierarchy():
     import pytest
 
@@ -114,3 +146,50 @@ def test_job_folder_hierarchy():
             target=BackgroundTargetConfig(),
             folder="Work/Reports/Deep",
         )
+
+
+def test_harness_info_colors_and_no_emojis():
+    # Claude: orange
+    assert HARNESS_INFO[AIHarness.CLAUDE].color == "#F97316"
+    assert HARNESS_INFO[AIHarness.CLAUDE].symbol == ""
+
+    # Antigravity: blue
+    assert HARNESS_INFO[AIHarness.ANTIGRAVITY].color == "#3B82F6"
+    assert HARNESS_INFO[AIHarness.ANTIGRAVITY].symbol == ""
+
+    # Cursor: dark gray
+    assert HARNESS_INFO[AIHarness.CURSOR].color == "#94A3B8"
+    assert HARNESS_INFO[AIHarness.CURSOR].symbol == ""
+
+    # Codex: white
+    assert HARNESS_INFO[AIHarness.CODEX].color == "#FFFFFF"
+    assert HARNESS_INFO[AIHarness.CODEX].symbol == ""
+
+
+def test_slugify_sanitization():
+    from roostr.domain.models import slugify
+
+    assert slugify("Daily Code Review") == "daily-code-review"
+    assert slugify("Relatório Matinal 09/11!") == "relatorio-matinal-09-11"
+    assert slugify("  Multiple   Spaces & Symbols --- ") == "multiple-spaces-symbols"
+    assert slugify("Ação & Reação: Teste 100%") == "acao-reacao-teste-100"
+    assert slugify("") == "job"
+
+
+def test_schedule_policy_frequencies():
+    from roostr.domain.enums import ScheduleFrequency
+
+    # Interval frequency is always within window regardless of time of day
+    p_hours = SchedulePolicy(
+        days_of_week=(0, 1),
+        frequency=ScheduleFrequency.INTERVAL_HOURS,
+        interval_value=2,
+    )
+    assert p_hours.is_within_window(datetime(2026, 11, 9, 3, 15)) is True
+
+    p_mins = SchedulePolicy(
+        days_of_week=(0, 1),
+        frequency=ScheduleFrequency.INTERVAL_MINUTES,
+        interval_value=30,
+    )
+    assert p_mins.is_within_window(datetime(2026, 11, 9, 23, 59)) is True

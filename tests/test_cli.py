@@ -79,3 +79,36 @@ def test_cli_setup_herdr():
     result = runner.invoke(main, ["setup-herdr"])
     assert result.exit_code == 0
     assert "Herdr App" in result.output
+
+
+def test_cli_daemon_commands(tmp_path):
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    # daemon tick
+    result = runner.invoke(main, ["--db", str(db_file), "daemon", "tick"])
+    assert result.exit_code == 0
+    assert "Tick complete: No jobs due." in result.output
+
+    # daemon status
+    with patch("roostr.infrastructure.launchd.LaunchdServiceAdapter.is_running", return_value=True):
+        res = runner.invoke(main, ["daemon", "status"])
+        assert res.exit_code == 0
+        assert "Roostr daemon is running" in res.output
+
+    with patch("roostr.infrastructure.launchd.LaunchdServiceAdapter.is_running", return_value=False):
+        res = runner.invoke(main, ["daemon", "status"])
+        assert res.exit_code == 0
+        assert "Roostr daemon is stopped" in res.output
+
+    # daemon install and uninstall
+    with patch("roostr.infrastructure.launchd.LaunchdServiceAdapter.install") as mock_install:
+        mock_install.return_value = tmp_path / "daemon.plist"
+        res = runner.invoke(main, ["daemon", "install"])
+        assert res.exit_code == 0
+        assert "installed and loaded" in res.output
+
+    with patch("roostr.infrastructure.launchd.LaunchdServiceAdapter.uninstall"):
+        res = runner.invoke(main, ["daemon", "uninstall"])
+        assert res.exit_code == 0
+        assert "unloaded and uninstalled" in res.output

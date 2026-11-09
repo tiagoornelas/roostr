@@ -84,6 +84,49 @@ def test_herdr_adapter_offline(herdr_job):
     assert "Herdr is not running" in msg
 
 
+def test_herdr_adapter_creates_space_if_missing(herdr_job):
+    import json
+
+    calls = []
+
+    def mock_runner(cmd, **kwargs):
+        calls.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        if cmd == ["hc", "server", "status"]:
+            return mock_res
+        if cmd == ["herdr-app", "ls"]:
+            # If space.new was called, return the newly created space
+            if any("space.new" in c for c in calls):
+                mock_res.stdout = json.dumps(
+                    {
+                        "spaces": [
+                            {
+                                "name": "Roostr",
+                                "id": "sp_roostr",
+                                "tabs": [{"terminals": [{"name": "daily-report-20261109-080000"}]}],
+                            }
+                        ]
+                    }
+                )
+            else:
+                mock_res.stdout = json.dumps({"spaces": []})
+            return mock_res
+        if "space.new" in cmd:
+            mock_res.returncode = 0
+            return mock_res
+        if len(cmd) > 1 and cmd[0] == "hc" and cmd[1] == "run":
+            mock_res.returncode = 0
+            mock_res.stdout = json.dumps({"terminal": "t1"})
+            return mock_res
+        return mock_res
+
+    adapter = HerdrTargetAdapter(cmd_runner=mock_runner, sleep_fn=lambda _: None)
+    success, msg = adapter.launch(herdr_job, datetime(2026, 11, 9, 8, 0, 0))
+    assert success is True
+    assert any("space.new" in c for c in calls)
+
+
 def test_background_adapter_spawns_process(background_job, tmp_path):
     logs_dir = tmp_path / "logs"
     popen_mock = MagicMock()

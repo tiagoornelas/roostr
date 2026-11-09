@@ -4,9 +4,20 @@ from contextlib import contextmanager
 from datetime import date, datetime, time
 from pathlib import Path
 
-from roostr.domain.enums import ExecutionStatus, TargetType, TerminalApp, ToleranceMode, TriggerType
+from roostr.domain.enums import (
+    ActionType,
+    AIHarness,
+    ExecutionStatus,
+    ScheduleFrequency,
+    TargetType,
+    TerminalApp,
+    ToleranceMode,
+    TriggerType,
+)
 from roostr.domain.models import (
+    AgentAction,
     BackgroundTargetConfig,
+    CommandAction,
     ExecutionRecord,
     HerdrTargetConfig,
     Job,
@@ -51,7 +62,12 @@ class SQLiteStorage:
                     target_config TEXT NOT NULL,
                     is_paused INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
-                    folder TEXT
+                    folder TEXT,
+                    action_type TEXT NOT NULL DEFAULT 'command',
+                    harness TEXT,
+                    prompt TEXT,
+                    frequency TEXT NOT NULL DEFAULT 'daily',
+                    interval_value INTEGER NOT NULL DEFAULT 1
                 );
 
                 CREATE TABLE IF NOT EXISTS executions (
@@ -68,6 +84,11 @@ class SQLiteStorage:
                     name TEXT PRIMARY KEY
                 );
 
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_executions_job_date 
                 ON executions(job_id, timestamp, status);
             """)
@@ -76,6 +97,16 @@ class SQLiteStorage:
             columns = [c[1] for c in cursor.fetchall()]
             if "folder" not in columns:
                 conn.execute("ALTER TABLE jobs ADD COLUMN folder TEXT")
+            if "action_type" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN action_type TEXT NOT NULL DEFAULT 'command'")
+            if "harness" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN harness TEXT")
+            if "prompt" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN prompt TEXT")
+            if "frequency" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'")
+            if "interval_value" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN interval_value INTEGER NOT NULL DEFAULT 1")
 
             conn.execute(
                 """
@@ -88,14 +119,21 @@ class SQLiteStorage:
         if job.folder:
             self.save_folder(job.folder)
         target_dict = self._target_to_dict(job.target)
+        action_type = job.action.action_type.value
+        harness = job.action.harness.value if isinstance(job.action, AgentAction) else None
+        prompt = job.action.prompt if isinstance(job.action, AgentAction) else None
+        frequency = job.schedule.frequency.value
+        interval_value = job.schedule.interval_value
+
         with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO jobs (
                     id, name, cwd, command, days_of_week, time_of_day,
                     tolerance_mode, tolerance_value, target_type, target_config,
-                    is_paused, created_at, folder
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_paused, created_at, folder, action_type, harness, prompt,
+                    frequency, interval_value
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cwd = excluded.cwd,
@@ -107,7 +145,12 @@ class SQLiteStorage:
                     target_type = excluded.target_type,
                     target_config = excluded.target_config,
                     is_paused = excluded.is_paused,
-                    folder = excluded.folder
+                    folder = excluded.folder,
+                    action_type = excluded.action_type,
+                    harness = excluded.harness,
+                    prompt = excluded.prompt,
+                    frequency = excluded.frequency,
+                    interval_value = excluded.interval_value
                 """,
                 (
                     job.id,
@@ -123,6 +166,11 @@ class SQLiteStorage:
                     1 if job.is_paused else 0,
                     job.created_at.isoformat(),
                     job.folder,
+                    action_type,
+                    harness,
+                    prompt,
+                    frequency,
+                    interval_value,
                 ),
             )
 
@@ -186,6 +234,22 @@ class SQLiteStorage:
             cleaned_folder = self.save_folder(folder)
         with self._connection() as conn:
             conn.execute("UPDATE jobs SET folder = ? WHERE id = ?", (cleaned_folder, job_id))
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with self._connection() as conn:
+            cursor = conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return str(row["value"]) if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
 
     def set_paused(self, job_id: str, paused: bool) -> None:
         with self._connection() as conn:
@@ -303,21 +367,37 @@ class SQLiteStorage:
 
     def _row_to_job(self, row: sqlite3.Row) -> Job:
         h, m = map(int, row["time_of_day"].split(":"))
+        freq_raw = row["frequency"] if "frequency" in row.keys() and row["frequency"] else "daily"
+        interval_val = (
+            row["interval_value"] if "interval_value" in row.keys() and row["interval_value"] is not None else 1
+        )
         schedule = SchedulePolicy(
             days_of_week=tuple(json.loads(row["days_of_week"])),
             time_of_day=time(h, m),
             tolerance_mode=ToleranceMode(row["tolerance_mode"]),
             tolerance_value=row["tolerance_value"],
+            frequency=ScheduleFrequency(freq_raw),
+            interval_value=int(interval_val),
         )
         target = self._dict_to_target(row["target_type"], json.loads(row["target_config"]))
         folder = row["folder"] if "folder" in row.keys() and row["folder"] else None
+
+        action_type_raw = row["action_type"] if "action_type" in row.keys() and row["action_type"] else "command"
+        harness_raw = row["harness"] if "harness" in row.keys() and row["harness"] else None
+        prompt_raw = row["prompt"] if "prompt" in row.keys() and row["prompt"] else ""
+
+        if action_type_raw == ActionType.AGENT.value and harness_raw:
+            action = AgentAction(harness=AIHarness(harness_raw), prompt=prompt_raw)
+        else:
+            action = CommandAction(command=row["command"])
+
         return Job(
             id=row["id"],
             name=row["name"],
             cwd=row["cwd"],
-            command=row["command"],
             schedule=schedule,
             target=target,
+            action=action,
             is_paused=bool(row["is_paused"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             folder=folder,

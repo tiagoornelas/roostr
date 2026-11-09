@@ -1,6 +1,5 @@
 from roostr.application.ports import JobRepositoryPort, SchedulerPort
 from roostr.domain.models import Job
-from roostr.infrastructure.launchd import LaunchdSchedulerAdapter
 
 
 class ManageJobsUseCase:
@@ -10,11 +9,11 @@ class ManageJobsUseCase:
         scheduler: SchedulerPort | None = None,
     ):
         self.storage = storage
-        self.scheduler = scheduler or LaunchdSchedulerAdapter()
+        self.scheduler = scheduler
 
     def create_job(self, job: Job) -> None:
         self.storage.save_job(job)
-        if not job.is_paused:
+        if self.scheduler and not job.is_paused:
             self.scheduler.install(job)
 
     def toggle_pause(self, job_id: str) -> bool:
@@ -26,14 +25,16 @@ class ManageJobsUseCase:
         self.storage.set_paused(job_id, new_paused_state)
         job.is_paused = new_paused_state
 
-        if new_paused_state:
-            self.scheduler.pause(job_id)
-        else:
-            self.scheduler.resume(job)
+        if self.scheduler:
+            if new_paused_state:
+                self.scheduler.pause(job_id)
+            else:
+                self.scheduler.resume(job)
         return new_paused_state
 
     def delete_job(self, job_id: str) -> None:
-        self.scheduler.uninstall(job_id)
+        if self.scheduler:
+            self.scheduler.uninstall(job_id)
         self.storage.delete_job(job_id)
 
     def move_job(self, job_id: str, folder: str | None) -> None:

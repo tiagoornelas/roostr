@@ -135,3 +135,15 @@ def test_manage_jobs_lifecycle(storage, terminal_job):
     use_case.delete_job("review-pr")
     assert storage.get_job("review-pr") is None
     assert scheduler_mock.uninstall.call_count == 1
+
+
+def test_manage_jobs_pure_storage_without_scheduler(storage, terminal_job):
+    use_case = ManageJobsUseCase(storage=storage)
+    use_case.create_job(terminal_job)
+    assert storage.get_job("review-pr") is not None
+
+    use_case.toggle_pause("review-pr")
+    assert storage.get_job("review-pr").is_paused is True
+
+    use_case.delete_job("review-pr")
+    assert storage.get_job("review-pr") is None
