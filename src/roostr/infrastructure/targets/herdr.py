@@ -10,7 +10,6 @@ from roostr.domain.models import HerdrTargetConfig, Job
 
 ROOSTR_SVG_ICON = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Crista e Barbela: Coral Luminoso -> Carmesim Profundo -->
     <linearGradient id="em1-crest" x1="6" y1="1.5" x2="17" y2="10" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FB7185"/>
       <stop offset="50%" stop-color="#EF4444"/>
@@ -20,34 +19,22 @@ ROOSTR_SVG_ICON = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.o
       <stop offset="0%" stop-color="#F87171"/>
       <stop offset="100%" stop-color="#991B1B"/>
     </linearGradient>
-    <!-- Corpo: Branco Puro -> Bege Quente -> Castanho Nobre -->
     <linearGradient id="em1-body" x1="5" y1="6" x2="16" y2="22" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FFFFFF"/>
       <stop offset="45%" stop-color="#F5EBE1"/>
       <stop offset="80%" stop-color="#C89F78"/>
       <stop offset="100%" stop-color="#7C4D2B"/>
     </linearGradient>
-    <!-- Bico: Ouro Solar -> Tangerina Vibrante -->
     <linearGradient id="em1-beak" x1="17" y1="8.5" x2="23" y2="12.5" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FEF08A"/>
       <stop offset="40%" stop-color="#FACC15"/>
       <stop offset="100%" stop-color="#EA580C"/>
     </linearGradient>
   </defs>
-
-  <!-- 1. Bico (Ponta com micro-arredondamento optico para nitidez em 14px) -->
   <path d="M16.5 8.5L22.2 10.6C22.7 10.8 22.7 11.5 22.2 11.7L16.5 13.8V8.5Z" fill="url(#em1-beak)"/>
-
-  <!-- 2. Barbela / Wattle (Projetada na silhueta frontal abaixo do bico) -->
   <path d="M15.8 12.8C18.2 13.8 19.2 16.5 17.8 18.4C16.6 20 14.2 19.6 13.5 17.5C13 15.8 14.2 13.5 15.8 12.8Z" fill="url(#em1-wattle)"/>
-
-  <!-- 3. Corpo & Pescoço (Curva em S anatomica com base de peito definida) -->
   <path d="M7.5 8.5C4.8 11.2 4.2 16.2 6.8 19.8C8.8 22.4 13.2 22.5 16.2 21.2C13.5 19.8 12.8 16.8 14.2 14.2C15.2 12.4 17.5 11.8 17.5 9.8C17.5 7.8 15 6.8 12 7C9.8 7.1 8.5 7.5 7.5 8.5Z" fill="url(#em1-body)"/>
-
-  <!-- 4. Crista Tripla (Tres lobulos geometricos envolvendo o topo da cabeca) -->
   <path d="M7.2 9.2C5.2 7.5 5.4 4.2 7.8 3.8C8.4 3.7 9 4 9.4 4.4C9.8 2.2 12.4 1.2 14.1 2.8C14.5 3.2 14.7 3.7 14.8 4.2C16.5 3.2 18.8 4.5 18.4 6.6C18.1 8.2 16.4 9.2 14.4 9.2C11.8 9.2 9.2 9.6 7.2 9.2Z" fill="url(#em1-crest)"/>
-
-  <!-- 5. Olho Solido de Alto Contraste (Sem sub-pixel para maxima precisao em 14px) -->
   <circle cx="13.2" cy="9.6" r="1.45" fill="#1E140C"/>
 </svg>"""
 
