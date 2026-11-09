@@ -48,6 +48,13 @@ class Messages:
     btn_save: str
     btn_cancel: str
 
+    # Settings modal
+    key_settings: str
+    settings_title: str
+    settings_theme: str
+    settings_language: str
+    btn_close: str
+
     # Notifications
     notify_success_created: str
     notify_success_deleted: str

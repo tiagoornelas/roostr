@@ -39,9 +39,9 @@ async def test_app_dashboard_mounts(storage, sample_job):
         assert isinstance(dashboard, DashboardScreen)
         assert dashboard.selected_job is not None
         assert dashboard.selected_job.id == "review-pr"
-        top_title = dashboard.query_one("#app-title", Label)
-        assert "🐓" in str(top_title.render())
-        assert "roostr" in str(top_title.render())
+        footer_brand = dashboard.query_one("#footer-brand", Label)
+        assert "🐓" in str(footer_brand.render())
+        assert "roostr" in str(footer_brand.render())
 
 
 @pytest.mark.asyncio
@@ -134,3 +134,20 @@ async def test_app_switch_theme(storage, sample_job):
         await pilot.press("t")
         await pilot.pause()
         assert app.theme == "night"
+
+
+@pytest.mark.asyncio
+async def test_app_open_settings(storage, sample_job):
+    from roostr.ui.screens.settings_modal import SettingsModal
+
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="en", theme="night")
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+        assert isinstance(app.screen, SettingsModal)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, DashboardScreen)

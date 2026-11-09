@@ -46,15 +46,14 @@ class JobListItem(ListItem):
         elif isinstance(self.job.target, BackgroundTargetConfig):
             target_icon = "⚙️"
 
-        with Vertical(classes="job-card-inner"):
-            with Horizontal(classes="job-card-top"):
-                yield Label(f"[bold]{target_icon} {self.job.name}[/]", classes="job-card-name")
-                yield Label(badge, classes="job-card-badge")
-            with Horizontal(classes="job-card-sub"):
-                yield Label(
-                    f"[dim]{days_str} {sched_str}[/] • [bold]{self.run_count}[/] [dim]runs[/]",
-                    classes="job-card-details",
-                )
+        with Horizontal(classes="job-card-top"):
+            yield Label(f"[bold]{target_icon} {self.job.name}[/]", classes="job-card-name")
+            yield Label(badge, classes="job-card-badge")
+        with Horizontal(classes="job-card-sub"):
+            yield Label(
+                f"[dim]{days_str} {sched_str}[/] • [bold]{self.run_count}[/] [dim]runs[/]",
+                classes="job-card-details",
+            )
 
 
 class DashboardScreen(Screen):
@@ -63,25 +62,6 @@ class DashboardScreen(Screen):
         layout: vertical;
         background: $background;
         color: $foreground;
-    }
-
-    #top-bar {
-        height: 2;
-        background: $background;
-        border-bottom: solid $panel;
-        padding: 0 1;
-        align: left middle;
-    }
-
-    #app-title {
-        width: 1fr;
-        text-style: bold;
-        color: $foreground;
-    }
-
-    #top-meta {
-        width: auto;
-        color: $secondary;
     }
 
     #main-content {
@@ -110,21 +90,32 @@ class DashboardScreen(Screen):
         height: 1fr;
         background: $background;
         padding: 0;
+        border: none;
+    }
+
+    #jobs-list:focus {
+        background-tint: transparent 0%;
     }
 
     JobListItem {
+        height: auto;
         padding: 1 1;
         border-bottom: solid $panel;
-        background: $background;
+        background: transparent;
         color: $foreground;
     }
 
-    JobListItem:hover {
+    JobListItem:hover,
+    JobListItem.-hovered {
         background: $panel;
     }
 
-    JobListItem.-selected {
+    ListView > JobListItem.-highlight,
+    ListView:focus > JobListItem.-highlight,
+    JobListItem.-selected,
+    JobListItem:focus {
         background: $panel;
+        color: $foreground;
         border-left: wide $primary;
     }
 
@@ -164,6 +155,28 @@ class DashboardScreen(Screen):
         background: $background;
         color: $foreground;
     }
+
+    #bottom-bar {
+        dock: bottom;
+        height: 1;
+        layout: horizontal;
+        background: $background;
+        border-top: solid $panel;
+    }
+
+    #footer-brand {
+        width: auto;
+        padding: 0 1;
+        color: $foreground;
+        text-style: bold;
+        background: $background;
+    }
+
+    #bottom-bar Footer {
+        width: 1fr;
+        dock: none;
+        background: transparent;
+    }
     """
 
     def __init__(self, storage: JobRepositoryPort, messages: Messages, theme_name: str = "night"):
@@ -174,10 +187,6 @@ class DashboardScreen(Screen):
         self.selected_job: Job | None = None
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="top-bar"):
-            yield Label("🐓  roostr", id="app-title")
-            yield Label(f"[dim]{self.active_theme}[/]", id="top-meta")
-
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
                 yield Label(self.msg.sidebar_header, id="sidebar-header")
@@ -186,14 +195,15 @@ class DashboardScreen(Screen):
             with VerticalScroll(id="inspector"):
                 yield Static(id="inspector-content")
 
-        yield Footer()
+        with Horizontal(id="bottom-bar"):
+            yield Label("🐓 roostr", id="footer-brand")
+            yield Footer()
 
     def on_mount(self) -> None:
         self.refresh_jobs()
 
     def update_theme(self, theme_name: str) -> None:
         self.active_theme = theme_name
-        self.query_one("#top-meta", Label).update(f"[dim]{theme_name}[/]")
         if self.selected_job:
             self.show_job_details(self.selected_job)
 

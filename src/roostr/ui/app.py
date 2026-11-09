@@ -11,6 +11,7 @@ from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
 from roostr.infrastructure.targets.herdr import register_herdr_program
 from roostr.ui.screens.dashboard import DashboardScreen
 from roostr.ui.screens.form_modal import JobFormModal
+from roostr.ui.screens.settings_modal import SettingsModal
 from roostr.ui.themes import DEFAULT_THEME, ROOSTR_THEMES, THEME_NAMES
 
 
@@ -18,14 +19,20 @@ class RoostrApp(App):
     TITLE = "🐓 roostr"
     SUB_TITLE = "Wake up your local AI coding agents on schedule"
 
+    ENABLE_COMMAND_PALETTE = True
+    COMMAND_PALETTE_BINDING = "ctrl+k"
+    COMMAND_PALETTE_DISPLAY = "^k"
+
     BINDINGS = [
         Binding("n", "new_job", "New Job", show=True),
         Binding("r", "run_now", "Run Now", show=True),
         Binding("p", "toggle_pause", "Pause/Resume", show=True),
         Binding("d", "delete_job", "Delete", show=True),
-        Binding("t", "switch_theme", "Theme", show=True),
-        Binding("l", "switch_language", "Language (EN/PT/ES)", show=True),
+        Binding("s", "open_settings", "Settings", show=True),
         Binding("q", "quit", "Quit", show=True),
+        Binding("ctrl+k", "command_palette", "Actions", key_display="^k", show=False),
+        Binding("t", "switch_theme", "Theme", show=False),
+        Binding("l", "switch_language", "Language", show=False),
     ]
 
     def __init__(
@@ -119,6 +126,33 @@ class RoostrApp(App):
         deleted_msg = self.msg.notify_success_deleted.replace("{name}", job.name)
         self.notify(deleted_msg, title="Deleted", severity="information")
         self.dashboard_screen.refresh_jobs()
+
+    def action_open_settings(self) -> None:
+        def on_settings_result(result: dict | None) -> None:
+            if not result:
+                return
+            new_theme = result.get("theme")
+            new_locale = result.get("locale")
+
+            if new_theme and new_theme != self.theme:
+                self.theme = new_theme
+                self.dashboard_screen.update_theme(new_theme)
+                self.notify(f"Theme: {new_theme}", title="Settings")
+
+            if new_locale and new_locale != self.locale:
+                self.locale = new_locale
+                self.msg = get_messages(self.locale)
+                self.dashboard_screen.update_messages(self.msg)
+                self.notify(f"Language: {self.locale.upper()}", title="Settings")
+
+        self.push_screen(
+            SettingsModal(
+                current_theme=self.theme,
+                current_locale=self.locale,
+                messages=self.msg,
+            ),
+            on_settings_result,
+        )
 
     def action_switch_theme(self) -> None:
         current_idx = THEME_NAMES.index(self.theme) if self.theme in THEME_NAMES else 0
