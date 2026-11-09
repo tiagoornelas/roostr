@@ -41,7 +41,6 @@ PT_BR_MESSAGES = Messages(
     lbl_time="Horário de Disparo (HH:MM):",
     lbl_tolerance_mode="Política de Tolerância:",
     lbl_tolerance_val="Limite de Tolerância (ex: 12 para até 12:00, ou 4 para 4h):",
-    lbl_sentinel="Arquivo Sentinela Opcional (vazio se não houver):",
     lbl_folder="Pasta / Subpasta (ex: Work ou Work/Reports):",
     btn_save="Salvar (Ctrl+S)",
     btn_cancel="Cancelar (Esc)",

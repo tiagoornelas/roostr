@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from pathlib import Path
 
 from roostr.domain.enums import ExecutionStatus, TargetType, TerminalApp, ToleranceMode, TriggerType
 
@@ -66,7 +65,6 @@ class Job:
     command: str
     schedule: SchedulePolicy
     target: TargetConfig
-    sentinel_pattern: str | None = None
     is_paused: bool = False
     created_at: datetime = field(default_factory=datetime.now)
     folder: str | None = None
@@ -91,26 +89,6 @@ class Job:
             return None
         parts = self.folder.split("/")
         return parts[1] if len(parts) > 1 else None
-
-    def resolve_sentinel_path(self, dt: datetime) -> str | None:
-        if not self.sentinel_pattern:
-            return None
-        formatted = (
-            self.sentinel_pattern.replace("{YYYY}", dt.strftime("%Y"))
-            .replace("{MM}", dt.strftime("%m"))
-            .replace("{DD}", dt.strftime("%d"))
-            .replace("{YYYY-MM-DD}", dt.strftime("%Y-%m-%d"))
-        )
-        path = Path(formatted)
-        if not path.is_absolute():
-            path = Path(self.cwd) / path
-        return str(path)
-
-    def sentinel_exists(self, dt: datetime) -> bool:
-        resolved = self.resolve_sentinel_path(dt)
-        if not resolved:
-            return False
-        return Path(resolved).exists()
 
     def resolve_herdr_tab_name(self, dt: datetime) -> str:
         if not isinstance(self.target, HerdrTargetConfig):

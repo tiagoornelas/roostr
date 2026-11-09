@@ -49,7 +49,6 @@ class SQLiteStorage:
                     tolerance_value INTEGER NOT NULL,
                     target_type TEXT NOT NULL,
                     target_config TEXT NOT NULL,
-                    sentinel_pattern TEXT,
                     is_paused INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     folder TEXT
@@ -95,8 +94,8 @@ class SQLiteStorage:
                 INSERT INTO jobs (
                     id, name, cwd, command, days_of_week, time_of_day,
                     tolerance_mode, tolerance_value, target_type, target_config,
-                    sentinel_pattern, is_paused, created_at, folder
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_paused, created_at, folder
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cwd = excluded.cwd,
@@ -107,7 +106,6 @@ class SQLiteStorage:
                     tolerance_value = excluded.tolerance_value,
                     target_type = excluded.target_type,
                     target_config = excluded.target_config,
-                    sentinel_pattern = excluded.sentinel_pattern,
                     is_paused = excluded.is_paused,
                     folder = excluded.folder
                 """,
@@ -122,7 +120,6 @@ class SQLiteStorage:
                     job.schedule.tolerance_value,
                     job.target.target_type.value,
                     json.dumps(target_dict),
-                    job.sentinel_pattern,
                     1 if job.is_paused else 0,
                     job.created_at.isoformat(),
                     job.folder,
@@ -321,7 +318,6 @@ class SQLiteStorage:
             command=row["command"],
             schedule=schedule,
             target=target,
-            sentinel_pattern=row["sentinel_pattern"],
             is_paused=bool(row["is_paused"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             folder=folder,

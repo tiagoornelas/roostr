@@ -16,9 +16,8 @@ Roostr is a modern, native scheduler and task runner designed specifically for l
   - Automatically writes and loads native `launchd` user launch agents (`~/Library/LaunchAgents/com.tiagoornelas.roostr.{job_id}.plist`).
   - Self-healing execution: Works through macOS sleep/wake cycles.
   - **Tolerance Modes**: Choose between *Catch-up* (runs as soon as the Mac wakes up within a tolerance window) or *Strict* (only runs if the Mac was awake at the exact scheduled time).
-- **Idempotency & Sentinel Protection**:
+- **Idempotency Protection**:
   - Built-in SQLite transaction journal (WAL mode) guaranteeing jobs run at most once per day unless manually triggered.
-  - Optional sentinel file templates (e.g. `~/.reports/{YYYY-MM-DD}.md`) to skip redundant agent work.
 - **Interactive TUI & Multilingual Support**:
   - Beautiful, fast terminal UI built on Textual.
   - Real-time job inspector, status badges, and execution logs.
@@ -118,7 +117,7 @@ roostr --locale pt_br
 | Key | Action | Description |
 | :---: | :--- | :--- |
 | `n` | **New Job** | Opens modal dialog to configure a new scheduled task |
-| `r` | **Run Now** | Immediately triggers the selected job (bypasses schedule/sentinel checks) |
+| `r` | **Run Now** | Immediately triggers the selected job (bypasses schedule checks) |
 | `p` | **Pause / Resume** | Toggles job activation and synchronizes launchd state |
 | `d` | **Delete** | Removes the job, purges history, and unloads launchd agent |
 | `t` | **Theme** | Cycles between `night`, `morning`, `tokyo-night`, `nord`, and `dracula` |

@@ -654,7 +654,6 @@ class DashboardScreen(Screen):
         else:
             target_str = "Background Process (Headless)"
 
-        sentinel_info = job.sentinel_pattern or "[dim]None (standard database idempotency)[/]"
         folder_info = f"[dim]Folder:[/]    [bold]{job.folder}[/]\n" if job.folder else ""
 
         primary_color = (
@@ -678,7 +677,6 @@ class DashboardScreen(Screen):
 [bold {primary_color}]{self.msg.inspector_execution}[/]
 [dim]CWD:[/]       [bold]{job.cwd}[/]
 [dim]Command:[/]   [bold green]{job.command}[/]
-[dim]Sentinel:[/]  [bold]{sentinel_info}[/]
 
 [bold {primary_color}]{self.msg.inspector_history}[/]
 """

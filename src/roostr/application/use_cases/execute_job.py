@@ -53,20 +53,7 @@ class ExecuteJobUseCase:
             if self.storage.has_succeeded_on_date(job_id, current_dt.date()):
                 return ExecutionStatus.SKIPPED_ALREADY_RAN, "Already executed successfully today"
 
-            # 4. Optional sentinel check
-            if job.sentinel_exists(current_dt):
-                record = ExecutionRecord(
-                    id=None,
-                    job_id=job.id,
-                    timestamp=current_dt,
-                    trigger_type=trigger,
-                    status=ExecutionStatus.SKIPPED_SENTINEL_EXISTS,
-                    details=f"Sentinel file already exists ({job.resolve_sentinel_path(current_dt)})",
-                )
-                self.storage.record_execution(record)
-                return ExecutionStatus.SKIPPED_SENTINEL_EXISTS, record.details
-
-        # 5. Dispatch via target dispatcher
+        # 4. Dispatch via target dispatcher
         success, message = self.dispatcher.dispatch(job, current_dt)
         status = ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILED
 

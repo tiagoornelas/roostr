@@ -219,14 +219,6 @@ class JobFormModal(ModalScreen[Job | None]):
                 initial_tol_val = str(self.job.schedule.tolerance_value) if self.job else "12"
                 yield Input(placeholder="12", id="inp-tolerance-val", value=initial_tol_val)
 
-                yield Label(self.msg.lbl_sentinel, classes="field-label")
-                initial_sentinel = self.job.sentinel_pattern if self.job and self.job.sentinel_pattern else ""
-                yield Input(
-                    placeholder="reports/{YYYY}/{MM}/{YYYY-MM-DD}-report.md",
-                    id="inp-sentinel",
-                    value=initial_sentinel,
-                )
-
                 yield Label("", id="error-label")
 
             with Horizontal(classes="button-row"):
@@ -302,7 +294,6 @@ class JobFormModal(ModalScreen[Job | None]):
             log_file = self.query_one("#inp-bg-log", Input).value.strip() or None
             target = BackgroundTargetConfig(log_file=log_file, notify_on_complete=True)
 
-        sentinel = self.query_one("#inp-sentinel", Input).value.strip() or None
         folder_val = self.job.folder if self.job else None
 
         job = Job(
@@ -317,7 +308,6 @@ class JobFormModal(ModalScreen[Job | None]):
                 tolerance_value=tol_val,
             ),
             target=target,
-            sentinel_pattern=sentinel,
             is_paused=self.job.is_paused if self.job else False,
             folder=folder_val,
         )

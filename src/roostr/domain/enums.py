@@ -16,7 +16,6 @@ class ExecutionStatus(StrEnum):
     SUCCESS = "success"
     SKIPPED_ALREADY_RAN = "skipped_already_ran"
     SKIPPED_OUTSIDE_WINDOW = "skipped_outside_window"
-    SKIPPED_SENTINEL_EXISTS = "skipped_sentinel_exists"
     SKIPPED_TARGET_OFFLINE = "skipped_target_offline"
     FAILED = "failed"
 

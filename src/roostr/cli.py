@@ -76,7 +76,6 @@ def run(ctx: click.Context, job_id: str, force: bool, db: Path | None) -> None:
         ExecutionStatus.SUCCESS,
         ExecutionStatus.SKIPPED_ALREADY_RAN,
         ExecutionStatus.SKIPPED_OUTSIDE_WINDOW,
-        ExecutionStatus.SKIPPED_SENTINEL_EXISTS,
     ):
         sys.exit(0)
     else:

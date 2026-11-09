@@ -58,7 +58,6 @@ def test_save_and_retrieve_herdr_job(storage):
             tolerance_value=12,
         ),
         target=HerdrTargetConfig(space="Roostr", tab_template="Daily {DD}/{MM}"),
-        sentinel_pattern="reports/{YYYY}/{MM}/{YYYY-MM-DD}-daily.md",
     )
     storage.save_job(job)
 
@@ -67,7 +66,6 @@ def test_save_and_retrieve_herdr_job(storage):
     assert isinstance(fetched.target, HerdrTargetConfig)
     assert fetched.target.space == "Roostr"
     assert fetched.target.tab_template == "Daily {DD}/{MM}"
-    assert fetched.sentinel_pattern == "reports/{YYYY}/{MM}/{YYYY-MM-DD}-daily.md"
 
 
 def test_record_execution_and_idempotency(storage):
