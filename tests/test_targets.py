@@ -116,3 +116,29 @@ def test_target_dispatcher(terminal_job, herdr_job, background_job):
 
     dispatcher.dispatch(background_job, dt)
     assert background_adapter.launch.call_count == 1
+
+
+def test_register_herdr_program(tmp_path):
+    from roostr.infrastructure.targets.herdr import register_herdr_program
+
+    # 1. Non-existent directory returns False
+    assert register_herdr_program(tmp_path / "non_existent") is False
+
+    # 2. Existing herdr directory registers icon and programs.json
+    herdr_dir = tmp_path / "herdr-app"
+    herdr_dir.mkdir()
+
+    res = register_herdr_program(herdr_dir)
+    assert res is True
+
+    icon_file = herdr_dir / "icons" / "roostr.svg"
+    assert icon_file.exists()
+    assert "<svg" in icon_file.read_text()
+
+    prog_file = herdr_dir / "programs.json"
+    assert prog_file.exists()
+    import json
+
+    data = json.loads(prog_file.read_text())
+    assert "roostr" in data["programs"]
+    assert data["programs"]["roostr"]["name"] == "Roostr"

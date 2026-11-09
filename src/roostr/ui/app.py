@@ -8,13 +8,14 @@ from roostr.application.use_cases.manage_jobs import ManageJobsUseCase
 from roostr.domain.enums import ExecutionStatus
 from roostr.domain.models import Job
 from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
+from roostr.infrastructure.targets.herdr import register_herdr_program
 from roostr.ui.screens.dashboard import DashboardScreen
 from roostr.ui.screens.form_modal import JobFormModal
 from roostr.ui.themes import DEFAULT_THEME, ROOSTR_THEMES, THEME_NAMES
 
 
 class RoostrApp(App):
-    TITLE = "roostr"
+    TITLE = "🐓 roostr"
     SUB_TITLE = "Wake up your local AI coding agents on schedule"
 
     BINDINGS = [
@@ -47,6 +48,12 @@ class RoostrApp(App):
 
         selected_theme = theme if theme in THEME_NAMES else DEFAULT_THEME
         self.theme = selected_theme
+
+        # Register Roostr program in Herdr if Herdr is present
+        try:
+            register_herdr_program()
+        except Exception:
+            pass
 
         self.execute_use_case = execute_use_case or ExecuteJobUseCase(storage=storage)
         self.manage_use_case = manage_use_case or ManageJobsUseCase(storage=storage)

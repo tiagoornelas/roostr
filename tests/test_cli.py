@@ -72,3 +72,10 @@ def test_cli_run_failure(tmp_path):
         result = runner.invoke(main, ["run", "test-job", "--db", str(db_file)])
         assert result.exit_code == 1
         assert "[failed] Command crashed" in result.output
+
+
+def test_cli_setup_herdr():
+    runner = CliRunner()
+    result = runner.invoke(main, ["setup-herdr"])
+    assert result.exit_code == 0
+    assert "Herdr App" in result.output

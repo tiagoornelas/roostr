@@ -3,9 +3,58 @@ import subprocess
 import time
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 from roostr.application.ports import ExecutionTargetPort
 from roostr.domain.models import HerdrTargetConfig, Job
+
+ROOSTR_SVG_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 2a4 4 0 0 0-4 4v1a4 4 0 0 0 1 2.6L7 12l2 2-3 2 4 4h8l2-4-2-2 1-3.4A4 4 0 0 0 16 7V6a4 4 0 0 0-4-4z"/>
+  <path d="M12 2c1 1 1 3 0 4"/>
+  <path d="M9 6a1.5 1.5 0 0 1 3-1"/>
+  <circle cx="10" cy="8" r="1" fill="currentColor"/>
+  <path d="m14 10 3 1-3 1"/>
+  <path d="M11 13c1 1 2 1 2 3"/>
+</svg>"""
+
+
+def register_herdr_program(config_dir: Path | None = None) -> bool:
+    """Registers roostr in Herdr App's programs.json and writes rooster SVG icon."""
+    herdr_dir = config_dir or (Path.home() / ".config" / "herdr-app")
+    if not herdr_dir.exists():
+        return False
+
+    try:
+        icons_dir = herdr_dir / "icons"
+        icons_dir.mkdir(parents=True, exist_ok=True)
+        roostr_icon_file = icons_dir / "roostr.svg"
+        if not roostr_icon_file.exists():
+            roostr_icon_file.write_text(ROOSTR_SVG_ICON, encoding="utf-8")
+
+        programs_file = herdr_dir / "programs.json"
+        programs_data: dict = {"programs": {}}
+        if programs_file.exists():
+            try:
+                programs_data = json.loads(programs_file.read_text(encoding="utf-8"))
+            except Exception:
+                programs_data = {"programs": {}}
+
+        if "programs" not in programs_data or not isinstance(programs_data["programs"], dict):
+            programs_data["programs"] = {}
+
+        programs_data["programs"]["roostr"] = {
+            "name": "Roostr",
+            "icon": "icons/roostr.svg",
+            "tint": True,
+            "tile": "#ff5722",
+            "color": "#ffffff",
+            "match": ["roostr"],
+        }
+
+        programs_file.write_text(json.dumps(programs_data, indent=2), encoding="utf-8")
+        return True
+    except Exception:
+        return False
 
 
 class HerdrTargetAdapter(ExecutionTargetPort):

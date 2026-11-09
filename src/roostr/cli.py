@@ -83,5 +83,16 @@ def run(ctx: click.Context, job_id: str, force: bool, db: Path | None) -> None:
         sys.exit(1)
 
 
+@main.command(name="setup-herdr")
+def setup_herdr() -> None:
+    """Register Roostr in Herdr App with custom Rooster SVG icon."""
+    from roostr.infrastructure.targets.herdr import register_herdr_program
+
+    if register_herdr_program():
+        click.echo("✓ Successfully registered Roostr in Herdr App (~/.config/herdr-app/programs.json)")
+    else:
+        click.echo("Herdr App not found (~/.config/herdr-app). Skipping registration.")
+
+
 if __name__ == "__main__":
     main()
