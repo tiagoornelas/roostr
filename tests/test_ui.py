@@ -2,6 +2,7 @@ from datetime import time
 from unittest.mock import MagicMock
 
 import pytest
+from textual.widgets import Label
 
 from roostr.domain.enums import ExecutionStatus, TerminalApp
 from roostr.domain.models import Job, SchedulePolicy, TerminalTargetConfig
@@ -38,6 +39,9 @@ async def test_app_dashboard_mounts(storage, sample_job):
         assert isinstance(dashboard, DashboardScreen)
         assert dashboard.selected_job is not None
         assert dashboard.selected_job.id == "review-pr"
+        top_title = dashboard.query_one("#app-title", Label)
+        assert "🐓" in str(top_title.render())
+        assert "roostr" in str(top_title.render())
 
 
 @pytest.mark.asyncio
@@ -99,3 +103,34 @@ async def test_app_switch_language(storage, sample_job):
         await pilot.press("l")
         await pilot.pause()
         assert app.locale == "es"
+
+
+@pytest.mark.asyncio
+async def test_app_switch_theme(storage, sample_job):
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="en", theme="night")
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.theme == "night"
+
+        # Cycle through morning -> tokyo-night -> nord -> dracula -> night
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.theme == "morning"
+
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.theme == "tokyo-night"
+
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.theme == "nord"
+
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.theme == "dracula"
+
+        await pilot.press("t")
+        await pilot.pause()
+        assert app.theme == "night"

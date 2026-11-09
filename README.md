@@ -121,8 +121,25 @@ roostr --locale pt_br
 | `r` | **Run Now** | Immediately triggers the selected job (bypasses schedule/sentinel checks) |
 | `p` | **Pause / Resume** | Toggles job activation and synchronizes launchd state |
 | `d` | **Delete** | Removes the job, purges history, and unloads launchd agent |
+| `t` | **Theme** | Cycles between `night`, `morning`, `tokyo-night`, `nord`, and `dracula` |
 | `l` | **Language** | Cycles between English, Brazilian Portuguese, and Spanish |
 | `q` | **Quit** | Exits the Roostr TUI |
+
+### Themes
+
+Roostr features a unified, minimalist canvas where sidebar and inspector share the exact same background tone, separated by a crisp border:
+- **`night`** (default): Minimalist high-contrast dark theme (deep black `#0a0a0a` canvas, crisp white foreground).
+- **`morning`**: Warm pastel yellowish light theme (warm parchment `#faf6ee` canvas, stone-900 high contrast text).
+- **`tokyo-night`**: Authentic Tokyo Night palette (`#1a1b26`).
+- **`nord`**: Arctic Nord palette (`#2e3440`).
+- **`dracula`**: Classic Dracula palette (`#282a36`).
+
+Launch directly with a specific theme:
+```bash
+roostr --theme morning
+# or
+roostr -t tokyo-night
+```
 
 ---
 

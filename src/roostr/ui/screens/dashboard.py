@@ -52,53 +52,80 @@ class JobListItem(ListItem):
                 yield Label(badge, classes="job-card-badge")
             with Horizontal(classes="job-card-sub"):
                 yield Label(
-                    f"[dim]{days_str} {sched_str}[/] • [cyan]{self.run_count}[/] runs", classes="job-card-details"
+                    f"[dim]{days_str} {sched_str}[/] • [bold]{self.run_count}[/] [dim]runs[/]",
+                    classes="job-card-details",
                 )
 
 
 class DashboardScreen(Screen):
     DEFAULT_CSS = """
     DashboardScreen {
-        layout: horizontal;
-        background: #0f141c;
+        layout: vertical;
+        background: $background;
+        color: $foreground;
+    }
+
+    #top-bar {
+        height: 2;
+        background: $background;
+        border-bottom: solid $panel;
+        padding: 0 1;
+        align: left middle;
+    }
+
+    #app-title {
+        width: 1fr;
+        text-style: bold;
+        color: $foreground;
+    }
+
+    #top-meta {
+        width: auto;
+        color: $secondary;
+    }
+
+    #main-content {
+        height: 1fr;
+        background: $background;
     }
 
     #sidebar {
-        width: 42%;
+        width: 40%;
         height: 100%;
-        border-right: solid #2d3748;
-        background: #0d121a;
+        border-right: solid $panel;
+        background: $background;
     }
 
     #sidebar-header {
-        background: #1b222d;
-        color: #8b949e;
+        background: $background;
+        color: $secondary;
         padding: 0 1;
         height: 2;
         content-align: left middle;
-        border-bottom: solid #2d3748;
+        border-bottom: solid $panel;
         text-style: bold;
     }
 
     #jobs-list {
         height: 1fr;
-        background: #0d121a;
+        background: $background;
         padding: 0;
     }
 
     JobListItem {
         padding: 1 1;
-        border-bottom: solid #1e2937;
-        background: #0d121a;
+        border-bottom: solid $panel;
+        background: $background;
+        color: $foreground;
     }
 
     JobListItem:hover {
-        background: #161f2c;
+        background: $panel;
     }
 
     JobListItem.-selected {
-        background: #1e2838;
-        border-left: solid #58a6ff;
+        background: $panel;
+        border-left: wide $primary;
     }
 
     .job-card-top {
@@ -108,7 +135,8 @@ class DashboardScreen(Screen):
 
     .job-card-name {
         width: 1fr;
-        color: #f0f6fc;
+        color: $foreground;
+        text-style: bold;
     }
 
     .job-card-badge {
@@ -121,73 +149,36 @@ class DashboardScreen(Screen):
     }
 
     .job-card-details {
-        color: #8b949e;
+        color: $secondary;
     }
 
     #inspector {
-        width: 58%;
+        width: 60%;
         height: 100%;
         padding: 1 2;
-        background: #0f141c;
+        background: $background;
+        color: $foreground;
     }
 
-    #inspector-header {
-        height: 4;
-        border-bottom: solid #2d3748;
-        margin-bottom: 1;
-    }
-
-    .inspector-title {
-        text-style: bold;
-        color: #ffffff;
-    }
-
-    .inspector-meta {
-        color: #8b949e;
-    }
-
-    .info-card {
-        background: #141b24;
-        border: solid #2d3748;
-        padding: 1 1;
-        margin-bottom: 1;
-    }
-
-    .info-card-title {
-        color: #58a6ff;
-        text-style: bold;
-        margin-bottom: 0;
-    }
-
-    .prop-row {
-        height: 1;
-    }
-
-    .prop-name {
-        width: 16;
-        color: #8b949e;
-    }
-
-    .prop-val {
-        color: #f0f6fc;
-    }
-
-    #history-title {
-        color: #58a6ff;
-        text-style: bold;
-        margin-top: 1;
-        margin-bottom: 0;
+    #inspector-content {
+        background: $background;
+        color: $foreground;
     }
     """
 
-    def __init__(self, storage: JobRepositoryPort, messages: Messages):
+    def __init__(self, storage: JobRepositoryPort, messages: Messages, theme_name: str = "night"):
         super().__init__()
         self.storage = storage
         self.msg = messages
+        self.active_theme = theme_name
         self.selected_job: Job | None = None
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
+        with Horizontal(id="top-bar"):
+            yield Label("🐓  roostr", id="app-title")
+            yield Label(f"[dim]{self.active_theme}[/]", id="top-meta")
+
+        with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
                 yield Label(self.msg.sidebar_header, id="sidebar-header")
                 yield ListView(id="jobs-list")
@@ -199,6 +190,12 @@ class DashboardScreen(Screen):
 
     def on_mount(self) -> None:
         self.refresh_jobs()
+
+    def update_theme(self, theme_name: str) -> None:
+        self.active_theme = theme_name
+        self.query_one("#top-meta", Label).update(f"[dim]{theme_name}[/]")
+        if self.selected_job:
+            self.show_job_details(self.selected_job)
 
     def update_messages(self, messages: Messages) -> None:
         self.msg = messages
@@ -289,24 +286,30 @@ class DashboardScreen(Screen):
 
         history_rendered = "\n".join(history_lines)
 
+        primary_color = (
+            self.app.current_theme.primary
+            if hasattr(self.app, "current_theme") and self.app.current_theme
+            else "#ffffff"
+        )
+
         content = f"""
-[bold white size=14]{job.name}[/]  {status_text}
-[dim]ID: {job.id} • Created: {job.created_at.strftime("%Y-%m-%d")} • Total runs: [cyan]{total_runs}[/][/]
+[bold size=14]{job.name}[/]  {status_text}
+[dim]ID: {job.id} • Created: {job.created_at.strftime("%Y-%m-%d")} • Total runs: [bold]{total_runs}[/][/]
 
-[bold #58a6ff]{self.msg.inspector_target}[/]
-[white]{target_str}[/]
+[bold {primary_color}]{self.msg.inspector_target}[/]
+[bold]{target_str}[/]
 
-[bold #58a6ff]{self.msg.inspector_schedule}[/]
-[dim]Time:[/]      [white]{job.schedule.time_of_day.strftime("%H:%M")}[/]
-[dim]Days:[/]      [white]{job.schedule.days_of_week}[/]
-[dim]Policy:[/]    [white]{tol_str}[/]
+[bold {primary_color}]{self.msg.inspector_schedule}[/]
+[dim]Time:[/]      [bold]{job.schedule.time_of_day.strftime("%H:%M")}[/]
+[dim]Days:[/]      [bold]{job.schedule.days_of_week}[/]
+[dim]Policy:[/]    [bold]{tol_str}[/]
 
-[bold #58a6ff]{self.msg.inspector_execution}[/]
-[dim]CWD:[/]       [white]{job.cwd}[/]
+[bold {primary_color}]{self.msg.inspector_execution}[/]
+[dim]CWD:[/]       [bold]{job.cwd}[/]
 [dim]Command:[/]   [bold green]{job.command}[/]
-[dim]Sentinel:[/]  [white]{sentinel_info}[/]
+[dim]Sentinel:[/]  [bold]{sentinel_info}[/]
 
-[bold #58a6ff]{self.msg.inspector_history}[/]
+[bold {primary_color}]{self.msg.inspector_history}[/]
 {history_rendered}
 """
         self.query_one("#inspector-content", Static).update(content)

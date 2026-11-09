@@ -25,23 +25,31 @@ def get_default_storage() -> SQLiteStorage:
     help="UI language locale (en, pt_br, es).",
 )
 @click.option(
+    "--theme",
+    "-t",
+    type=click.Choice(["night", "morning", "tokyo-night", "nord", "dracula"], case_sensitive=False),
+    default="night",
+    help="UI theme (night, morning, tokyo-night, nord, dracula).",
+)
+@click.option(
     "--db",
     type=click.Path(path_type=Path),
     default=None,
     help="Custom path to SQLite database.",
 )
 @click.pass_context
-def main(ctx: click.Context, locale: str, db: Path | None) -> None:
+def main(ctx: click.Context, locale: str, theme: str, db: Path | None) -> None:
     """roostr: Wake up your local AI coding agents on schedule."""
     ctx.ensure_object(dict)
     ctx.obj["db"] = db
     ctx.obj["locale"] = locale
+    ctx.obj["theme"] = theme
 
     if ctx.invoked_subcommand is None:
         from roostr.ui.app import RoostrApp
 
         storage = SQLiteStorage(db) if db else get_default_storage()
-        app = RoostrApp(storage=storage, locale=locale)
+        app = RoostrApp(storage=storage, locale=locale, theme=theme)
         app.run()
 
 

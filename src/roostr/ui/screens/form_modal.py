@@ -29,37 +29,38 @@ class JobFormModal(ModalScreen[Job | None]):
     #form-container {
         width: 86;
         max-height: 92%;
-        background: #161b22;
-        border: solid #58a6ff;
+        background: $background;
+        border: solid $primary;
         padding: 1 2;
+        color: $foreground;
     }
 
     .form-title {
         text-style: bold;
-        color: #58a6ff;
+        color: $primary;
         margin-bottom: 1;
         text-align: center;
     }
 
     .field-label {
-        color: #8b949e;
+        color: $secondary;
         margin-top: 1;
     }
 
     Input {
-        background: #0d1117;
-        border: solid #30363d;
-        color: #c9d1d9;
+        background: $panel;
+        border: solid $panel;
+        color: $foreground;
     }
 
     Input:focus {
-        border: solid #58a6ff;
+        border: solid $primary;
     }
 
     Select {
-        background: #0d1117;
-        border: solid #30363d;
-        color: #c9d1d9;
+        background: $panel;
+        border: solid $panel;
+        color: $foreground;
     }
 
     .button-row {
@@ -73,233 +74,236 @@ class JobFormModal(ModalScreen[Job | None]):
     }
 
     #error-label {
-        color: #f85149;
+        color: $error;
+        text-style: bold;
         margin-top: 1;
-        text-align: center;
     }
 
-    .hidden {
-        display: none;
+    .target-box {
+        margin-top: 1;
+        padding: 1;
+        border: solid $panel;
+        background: $background;
     }
     """
 
-    BINDINGS = [
-        ("escape", "cancel", "Cancel"),
-        ("ctrl+s", "submit", "Save"),
-    ]
-
-    def __init__(self, messages: Messages, existing_job: Job | None = None):
+    def __init__(self, job: Job | None = None, messages: Messages | None = None):
         super().__init__()
-        self.msg = messages
-        self.existing_job = existing_job
+        self.job = job
+        from roostr.i18n.catalog import get_messages
+
+        self.msg = messages or get_messages("en")
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="form-container"):
-            title = self.msg.modal_title_edit if self.existing_job else self.msg.modal_title_new
+        with Vertical(id="form-container"):
+            title = self.msg.modal_title_edit if self.job else self.msg.modal_title_new
             yield Label(title, classes="form-title")
 
-            yield Label(self.msg.lbl_job_id, classes="field-label")
-            initial_id = self.existing_job.id if self.existing_job else ""
-            yield Input(
-                placeholder="e.g. daily-report", value=initial_id, id="input-id", disabled=bool(self.existing_job)
-            )
-
-            yield Label(self.msg.lbl_job_name, classes="field-label")
-            initial_name = self.existing_job.name if self.existing_job else ""
-            yield Input(placeholder="e.g. Daily Standup Report", value=initial_name, id="input-name")
-
-            yield Label(self.msg.lbl_cwd, classes="field-label")
-            initial_cwd = self.existing_job.cwd if self.existing_job else str(Path.home())
-            yield Input(placeholder=f"e.g. {Path.home()}/Documents/dev/my-project", value=initial_cwd, id="input-cwd")
-
-            yield Label(self.msg.lbl_command, classes="field-label")
-            initial_cmd = self.existing_job.command if self.existing_job else "claude '/daily-report'"
-            yield Input(placeholder="e.g. claude '/review' or agy 'check prs'", value=initial_cmd, id="input-command")
-
-            yield Label(self.msg.lbl_target_type, classes="field-label")
-            current_target_type = self.existing_job.target.target_type.value if self.existing_job else "terminal"
-            target_options = [
-                ("Terminal (Default for macOS)", "terminal"),
-                ("Herdr App (Spaces & Tabs)", "herdr"),
-                ("Background (Headless log)", "background"),
-            ]
-            yield Select(options=target_options, value=current_target_type, id="select-target-type", allow_blank=False)
-
-            # Terminal fields container
-            with Vertical(id="target-fields-terminal"):
-                yield Label(self.msg.lbl_terminal_app, classes="field-label")
-                terminal_app_options = [
-                    ("System Default (Terminal.app)", "auto"),
-                    ("Ghostty", "ghostty"),
-                    ("iTerm2", "iterm2"),
-                    ("Kitty", "kitty"),
-                ]
-                initial_app = (
-                    self.existing_job.target.app.value
-                    if (self.existing_job and isinstance(self.existing_job.target, TerminalTargetConfig))
-                    else "auto"
-                )
-                yield Select(
-                    options=terminal_app_options, value=initial_app, id="select-terminal-app", allow_blank=False
-                )
-
-            # Herdr fields container
-            with Vertical(id="target-fields-herdr", classes="hidden"):
-                yield Label(self.msg.lbl_herdr_space, classes="field-label")
-                initial_space = (
-                    self.existing_job.target.space
-                    if (self.existing_job and isinstance(self.existing_job.target, HerdrTargetConfig))
-                    else "Roostr"
-                )
+            with VerticalScroll():
+                yield Label(self.msg.lbl_job_id, classes="field-label")
                 yield Input(
-                    placeholder="e.g. Roostr or Personal Coordinator", value=initial_space, id="input-herdr-space"
+                    placeholder="e.g. daily-sync",
+                    id="inp-id",
+                    value=self.job.id if self.job else "",
+                    disabled=bool(self.job),
                 )
 
-                yield Label(self.msg.lbl_tab_template, classes="field-label")
-                initial_tab = (
-                    self.existing_job.target.tab_template
-                    if (self.existing_job and isinstance(self.existing_job.target, HerdrTargetConfig))
-                    else "{job.name} {DD}/{MM}"
+                yield Label(self.msg.lbl_job_name, classes="field-label")
+                yield Input(
+                    placeholder="e.g. Daily Synchronization",
+                    id="inp-name",
+                    value=self.job.name if self.job else "",
                 )
-                yield Input(placeholder="e.g. Daily {DD}/{MM}", value=initial_tab, id="input-tab-template")
 
-            yield Label(self.msg.lbl_days, classes="field-label")
-            if self.existing_job:
-                initial_days = ",".join(str(d) for d in self.existing_job.schedule.days_of_week)
-            else:
-                initial_days = "0,1,2,3,4"
-            yield Input(placeholder="e.g. weekdays, all, or 0,1,2,3,4", value=initial_days, id="input-days")
+                yield Label(self.msg.lbl_cwd, classes="field-label")
+                yield Input(
+                    placeholder="/path/to/project",
+                    id="inp-cwd",
+                    value=self.job.cwd if self.job else str(Path.home()),
+                )
 
-            yield Label(self.msg.lbl_time, classes="field-label")
-            initial_time = self.existing_job.schedule.time_of_day.strftime("%H:%M") if self.existing_job else "08:00"
-            yield Input(placeholder="e.g. 08:00", value=initial_time, id="input-time")
+                yield Label(self.msg.lbl_command, classes="field-label")
+                yield Input(
+                    placeholder="claude '/sync' or agy 'run'",
+                    id="inp-command",
+                    value=self.job.command if self.job else "",
+                )
 
-            yield Label(self.msg.lbl_tolerance_mode, classes="field-label")
-            tolerance_options = [
-                ("Until hour limit (e.g. until 12:00)", "until_hour"),
-                ("Exact time (strict)", "exact"),
-                ("Window in hours (e.g. 4h)", "window_hours"),
-            ]
-            current_mode = self.existing_job.schedule.tolerance_mode.value if self.existing_job else "until_hour"
-            yield Select(options=tolerance_options, value=current_mode, id="select-tolerance-mode", allow_blank=False)
+                yield Label(self.msg.lbl_target_type, classes="field-label")
+                target_options = [
+                    ("Terminal Window", "terminal"),
+                    ("Herdr App Space/Tab", "herdr"),
+                    ("Background Process (Daemon)", "background"),
+                ]
+                initial_target = "terminal"
+                if self.job:
+                    if isinstance(self.job.target, HerdrTargetConfig):
+                        initial_target = "herdr"
+                    elif isinstance(self.job.target, BackgroundTargetConfig):
+                        initial_target = "background"
 
-            yield Label(self.msg.lbl_tolerance_val, classes="field-label")
-            initial_tol_val = str(self.existing_job.schedule.tolerance_value) if self.existing_job else "12"
-            yield Input(placeholder="e.g. 12", value=initial_tol_val, id="input-tolerance-val")
+                yield Select(target_options, value=initial_target, id="sel-target-type")
 
-            yield Label(self.msg.lbl_sentinel, classes="field-label")
-            initial_sentinel = (
-                self.existing_job.sentinel_pattern if (self.existing_job and self.existing_job.sentinel_pattern) else ""
-            )
-            yield Input(
-                placeholder="e.g. reports/{YYYY}/{MM}/{YYYY-MM-DD}-daily.md",
-                value=initial_sentinel,
-                id="input-sentinel",
-            )
+                # Dynamic target settings containers
+                with Vertical(id="target-terminal-box", classes="target-box"):
+                    yield Label(self.msg.lbl_terminal_app, classes="field-label")
+                    term_apps = [
+                        ("Auto-detect", "auto"),
+                        ("Terminal.app", "terminal"),
+                        ("Ghostty", "ghostty"),
+                        ("iTerm2", "iterm2"),
+                        ("Kitty", "kitty"),
+                    ]
+                    yield Select(term_apps, value="auto", id="sel-terminal-app")
 
-            yield Label("", id="error-label")
+                with Vertical(id="target-herdr-box", classes="target-box"):
+                    yield Label(self.msg.lbl_herdr_space, classes="field-label")
+                    herdr_space = (
+                        self.job.target.space if isinstance(self.job and self.job.target, HerdrTargetConfig) else ""
+                    )
+                    yield Input(placeholder="e.g. Roostr or Personal", id="inp-herdr-space", value=herdr_space)
+
+                    yield Label(self.msg.lbl_tab_template, classes="field-label")
+                    herdr_tab = (
+                        self.job.target.tab_template
+                        if isinstance(self.job and self.job.target, HerdrTargetConfig)
+                        else "Daily {DD}/{MM}"
+                    )
+                    yield Input(placeholder="Daily {DD}/{MM}", id="inp-herdr-tab", value=herdr_tab)
+
+                with Vertical(id="target-background-box", classes="target-box"):
+                    yield Label("Log file path (optional):", classes="field-label")
+                    bg_log = (
+                        self.job.target.log_file
+                        if isinstance(self.job and self.job.target, BackgroundTargetConfig) and self.job.target.log_file
+                        else ""
+                    )
+                    yield Input(placeholder="~/.local/state/roostr/logs/...", id="inp-bg-log", value=bg_log)
+
+                # Schedule settings
+                yield Label(self.msg.lbl_days, classes="field-label")
+                day_options = [
+                    ("Monday to Friday (Mon–Fri)", "weekdays"),
+                    ("Every Day (Mon–Sun)", "everyday"),
+                    ("Custom (1,2,3,4,5)", "custom"),
+                ]
+                yield Select(day_options, value="weekdays", id="sel-days")
+
+                yield Label(self.msg.lbl_time, classes="field-label")
+                initial_time = self.job.schedule.time_of_day.strftime("%H:%M") if self.job else "08:00"
+                yield Input(placeholder="08:00", id="inp-time", value=initial_time)
+
+                yield Label(self.msg.lbl_tolerance_mode, classes="field-label")
+                tol_options = [
+                    ("Until specific hour (e.g. 12:00)", "until_hour"),
+                    ("Hours window after schedule", "hours_window"),
+                    ("Exact time only (strict)", "exact"),
+                ]
+                yield Select(tol_options, value="until_hour", id="sel-tolerance-mode")
+
+                yield Label(self.msg.lbl_tolerance_val, classes="field-label")
+                initial_tol_val = str(self.job.schedule.tolerance_value) if self.job else "12"
+                yield Input(placeholder="12", id="inp-tolerance-val", value=initial_tol_val)
+
+                yield Label(self.msg.lbl_sentinel, classes="field-label")
+                initial_sentinel = self.job.sentinel_pattern if self.job and self.job.sentinel_pattern else ""
+                yield Input(
+                    placeholder="reports/{YYYY}/{MM}/{YYYY-MM-DD}-report.md",
+                    id="inp-sentinel",
+                    value=initial_sentinel,
+                )
+
+                yield Label("", id="error-label")
 
             with Horizontal(classes="button-row"):
                 yield Button(self.msg.btn_cancel, variant="default", id="btn-cancel")
-                yield Button(self.msg.btn_save, variant="primary", id="btn-submit")
+                yield Button(self.msg.btn_save, variant="primary", id="btn-save")
 
-    @on(Select.Changed, "#select-target-type")
+    def on_mount(self) -> None:
+        self._update_target_visibility("terminal")
+
+    @on(Select.Changed, "#sel-target-type")
     def on_target_type_changed(self, event: Select.Changed) -> None:
-        target_val = event.value
-        terminal_box = self.query_one("#target-fields-terminal", Vertical)
-        herdr_box = self.query_one("#target-fields-herdr", Vertical)
+        self._update_target_visibility(str(event.value))
 
-        if target_val == "terminal":
-            terminal_box.remove_class("hidden")
-            herdr_box.add_class("hidden")
-        elif target_val == "herdr":
-            terminal_box.add_class("hidden")
-            herdr_box.remove_class("hidden")
-        else:
-            terminal_box.add_class("hidden")
-            herdr_box.add_class("hidden")
+    def _update_target_visibility(self, target_type: str) -> None:
+        self.query_one("#target-terminal-box").display = target_type == "terminal"
+        self.query_one("#target-herdr-box").display = target_type == "herdr"
+        self.query_one("#target-background-box").display = target_type == "background"
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-cancel":
-            self.action_cancel()
-        elif event.button.id == "btn-submit":
-            self.action_submit()
-
-    def action_cancel(self) -> None:
+    @on(Button.Pressed, "#btn-cancel")
+    def on_cancel(self) -> None:
         self.dismiss(None)
 
-    def action_submit(self) -> None:
-        job_id = self.query_one("#input-id", Input).value.strip()
-        name = self.query_one("#input-name", Input).value.strip()
-        cwd = self.query_one("#input-cwd", Input).value.strip()
-        command = self.query_one("#input-command", Input).value.strip()
-        target_type_val = self.query_one("#select-target-type", Select).value
-
-        days_str = self.query_one("#input-days", Input).value.strip().lower()
-        time_str = self.query_one("#input-time", Input).value.strip()
-        tolerance_mode_val = self.query_one("#select-tolerance-mode", Select).value
-        tolerance_val_str = self.query_one("#input-tolerance-val", Input).value.strip()
-        sentinel = self.query_one("#input-sentinel", Input).value.strip() or None
+    @on(Button.Pressed, "#btn-save")
+    def on_save(self) -> None:
+        job_id = self.query_one("#inp-id", Input).value.strip()
+        job_name = self.query_one("#inp-name", Input).value.strip()
+        cwd = self.query_one("#inp-cwd", Input).value.strip()
+        command = self.query_one("#inp-command", Input).value.strip()
+        time_str = self.query_one("#inp-time", Input).value.strip()
+        target_type = self.query_one("#sel-target-type", Select).value
 
         error_label = self.query_one("#error-label", Label)
 
-        if not job_id or not name or not cwd or not command:
-            error_label.update("Please fill all required fields (ID, Name, CWD, Command).")
+        if not job_id or not job_name or not command:
+            error_label.update("Job ID, Name, and Command are required.")
             return
 
         try:
-            h, m = map(int, time_str.split(":"))
-            time_of_day = time(h, m)
+            parts = time_str.split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            tod = time(hour, minute)
         except Exception:
-            error_label.update("Invalid time format. Use HH:MM (e.g. 08:00).")
+            error_label.update("Invalid time format. Please use HH:MM.")
             return
 
-        if days_str in ("weekdays", "seg-sex", "seg_sex"):
+        days_val = self.query_one("#sel-days", Select).value
+        if days_val == "weekdays":
             days = (0, 1, 2, 3, 4)
-        elif days_str in ("all", "daily", "diario", "todos"):
+        elif days_val == "everyday":
             days = (0, 1, 2, 3, 4, 5, 6)
         else:
-            try:
-                days = tuple(int(x.strip()) for x in days_str.split(","))
-            except Exception:
-                error_label.update("Invalid days. Use numbers separated by commas (e.g. 0,1,2,3,4).")
-                return
+            days = (0, 1, 2, 3, 4)
 
+        tol_mode_val = self.query_one("#sel-tolerance-mode", Select).value
+        tol_mode = ToleranceMode(tol_mode_val)
+
+        tol_val_str = self.query_one("#inp-tolerance-val", Input).value.strip()
         try:
-            tol_val = int(tolerance_val_str) if tolerance_val_str else 0
-        except Exception:
-            error_label.update("Tolerance limit must be an integer number.")
-            return
+            tol_val = int(tol_val_str) if tol_val_str else 0
+        except ValueError:
+            tol_val = 0
 
-        policy = SchedulePolicy(
-            days_of_week=days,
-            time_of_day=time_of_day,
-            tolerance_mode=ToleranceMode(tolerance_mode_val),
-            tolerance_value=tol_val,
-        )
-
-        target_cfg: TargetConfig
-        if target_type_val == "terminal":
-            app_val = self.query_one("#select-terminal-app", Select).value
-            target_cfg = TerminalTargetConfig(app=TerminalApp(app_val), keep_open=True)
-        elif target_type_val == "herdr":
-            space_val = self.query_one("#input-herdr-space", Input).value.strip()
-            tab_val = self.query_one("#input-tab-template", Input).value.strip() or "{job.name} {DD}/{MM}"
-            if not space_val:
-                error_label.update("Herdr Space Name is required when Herdr App target is selected.")
-                return
-            target_cfg = HerdrTargetConfig(space=space_val, tab_template=tab_val)
+        target: TargetConfig
+        if target_type == "terminal":
+            app_val = self.query_one("#sel-terminal-app", Select).value
+            target = TerminalTargetConfig(app=TerminalApp(app_val), keep_open=True)
+        elif target_type == "herdr":
+            space = self.query_one("#inp-herdr-space", Input).value.strip() or "Roostr"
+            tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "Daily {DD}/{MM}"
+            target = HerdrTargetConfig(space=space, tab_template=tab_template)
         else:
-            target_cfg = BackgroundTargetConfig(notify_on_complete=True)
+            log_file = self.query_one("#inp-bg-log", Input).value.strip() or None
+            target = BackgroundTargetConfig(log_file=log_file, notify_on_complete=True)
+
+        sentinel = self.query_one("#inp-sentinel", Input).value.strip() or None
 
         job = Job(
             id=job_id,
-            name=name,
+            name=job_name,
             cwd=cwd,
             command=command,
-            schedule=policy,
-            target=target_cfg,
+            schedule=SchedulePolicy(
+                days_of_week=days,
+                time_of_day=tod,
+                tolerance_mode=tol_mode,
+                tolerance_value=tol_val,
+            ),
+            target=target,
             sentinel_pattern=sentinel,
-            is_paused=self.existing_job.is_paused if self.existing_job else False,
+            is_paused=self.job.is_paused if self.job else False,
         )
+
         self.dismiss(job)

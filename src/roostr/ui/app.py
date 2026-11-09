@@ -10,6 +10,7 @@ from roostr.domain.models import Job
 from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
 from roostr.ui.screens.dashboard import DashboardScreen
 from roostr.ui.screens.form_modal import JobFormModal
+from roostr.ui.themes import DEFAULT_THEME, ROOSTR_THEMES, THEME_NAMES
 
 
 class RoostrApp(App):
@@ -21,6 +22,7 @@ class RoostrApp(App):
         Binding("r", "run_now", "Run Now", show=True),
         Binding("p", "toggle_pause", "Pause/Resume", show=True),
         Binding("d", "delete_job", "Delete", show=True),
+        Binding("t", "switch_theme", "Theme", show=True),
         Binding("l", "switch_language", "Language (EN/PT/ES)", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
@@ -29,6 +31,7 @@ class RoostrApp(App):
         self,
         storage: JobRepositoryPort,
         locale: str = "en",
+        theme: str = DEFAULT_THEME,
         execute_use_case: ExecuteJobUseCase | None = None,
         manage_use_case: ManageJobsUseCase | None = None,
         **kwargs,
@@ -38,9 +41,20 @@ class RoostrApp(App):
         self.locale = locale
         self.msg = get_messages(self.locale)
 
+        # Register custom curated themes
+        for custom_theme in ROOSTR_THEMES:
+            self.register_theme(custom_theme)
+
+        selected_theme = theme if theme in THEME_NAMES else DEFAULT_THEME
+        self.theme = selected_theme
+
         self.execute_use_case = execute_use_case or ExecuteJobUseCase(storage=storage)
         self.manage_use_case = manage_use_case or ManageJobsUseCase(storage=storage)
-        self.dashboard_screen = DashboardScreen(storage=self.storage, messages=self.msg)
+        self.dashboard_screen = DashboardScreen(
+            storage=self.storage,
+            messages=self.msg,
+            theme_name=self.theme,
+        )
 
     def get_default_screen(self) -> DashboardScreen:
         return self.dashboard_screen
@@ -98,6 +112,13 @@ class RoostrApp(App):
         deleted_msg = self.msg.notify_success_deleted.replace("{name}", job.name)
         self.notify(deleted_msg, title="Deleted", severity="information")
         self.dashboard_screen.refresh_jobs()
+
+    def action_switch_theme(self) -> None:
+        current_idx = THEME_NAMES.index(self.theme) if self.theme in THEME_NAMES else 0
+        next_theme = THEME_NAMES[(current_idx + 1) % len(THEME_NAMES)]
+        self.theme = next_theme
+        self.dashboard_screen.update_theme(next_theme)
+        self.notify(f"Theme changed to {next_theme}", title="Theme")
 
     def action_switch_language(self) -> None:
         current_idx = SUPPORTED_LOCALES.index(self.locale) if self.locale in SUPPORTED_LOCALES else 0

@@ -12,6 +12,7 @@ def test_cli_help():
     assert result.exit_code == 0
     assert "Wake up your local AI coding agents on schedule" in result.output
     assert "--locale" in result.output
+    assert "--theme" in result.output
 
 
 def test_cli_run_help():
