@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -77,6 +78,19 @@ def register_herdr_program(config_dir: Path | None = None) -> bool:
         return False
 
 
+def make_herdr_terminal_name(job_id: str, dt: datetime) -> str:
+    """Generate a valid Herdr terminal name adhering to schema:
+    1-32 chars of a-z, 0-9, -, _, . starting with a letter or digit, not shaped like an id (t\\d+).
+    """
+    ts = dt.strftime("%Y%m%d-%H%M%S")  # 15 chars
+    clean_id = re.sub(r"[^a-z0-9_-]", "", job_id.lower())
+    max_prefix_len = 32 - len(ts) - 1  # 16 chars
+    prefix = clean_id[:max_prefix_len].rstrip("-_.")
+    if not prefix or not prefix[0].isalnum():
+        prefix = "j"
+    return f"{prefix}-{ts}"[:32]
+
+
 class HerdrTargetAdapter(ExecutionTargetPort):
     def __init__(
         self,
@@ -151,7 +165,7 @@ class HerdrTargetAdapter(ExecutionTargetPort):
         if not space_id:
             return False, err or f'Space "{target_space}" could not be created in Herdr'
 
-        terminal_name = f"{job.id}-{dt.strftime('%Y%m%d-%H%M%S')}"
+        terminal_name = make_herdr_terminal_name(job.id, dt)
 
         hc_cmd = [
             "hc",

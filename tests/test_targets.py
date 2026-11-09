@@ -84,6 +84,27 @@ def test_herdr_adapter_offline(herdr_job):
     assert "Herdr is not running" in msg
 
 
+def test_make_herdr_terminal_name():
+    from roostr.infrastructure.targets.herdr import make_herdr_terminal_name
+
+    dt = datetime(2026, 11, 9, 15, 24, 21)
+    # Long job id
+    long_name = make_herdr_terminal_name("daily-monitor-digest", dt)
+    assert len(long_name) <= 32
+    assert long_name == "daily-monitor-di-20261109-152421"
+    assert long_name[0].isalnum()
+
+    # Extreme length
+    extreme_name = make_herdr_terminal_name("a" * 100, dt)
+    assert len(extreme_name) <= 32
+    assert extreme_name == "aaaaaaaaaaaaaaaa-20261109-152421"
+
+    # Non-alphanumeric start
+    sanitized = make_herdr_terminal_name("---!@#$$$", dt)
+    assert len(sanitized) <= 32
+    assert sanitized[0].isalnum()
+
+
 def test_herdr_adapter_creates_space_if_missing(herdr_job):
     import json
 
