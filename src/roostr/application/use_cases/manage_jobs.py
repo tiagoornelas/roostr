@@ -16,6 +16,14 @@ class ManageJobsUseCase:
         if self.scheduler and not job.is_paused:
             self.scheduler.install(job)
 
+    def update_job(self, job: Job) -> None:
+        self.storage.save_job(job)
+        if self.scheduler:
+            if job.is_paused:
+                self.scheduler.pause(job.id)
+            else:
+                self.scheduler.install(job)
+
     def toggle_pause(self, job_id: str) -> bool:
         job = self.storage.get_job(job_id)
         if not job:

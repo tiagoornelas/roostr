@@ -6,6 +6,7 @@ PT_BR_MESSAGES = Messages(
     app_subtitle="Agendador e orquestrador local de agentes de IA",
     # Keybar bindings
     key_new_job="Novo Job",
+    key_edit_job="Editar",
     key_run_now="Rodar Agora",
     key_move_job="Mover p/ Pasta",
     key_new_folder="Nova Pasta",
@@ -186,6 +187,7 @@ PT_BR_MESSAGES = Messages(
     msg_theme_changed="Tema alterado para {theme}",
     msg_language_changed="Idioma alterado para {lang}",
     notify_success_created="Job '{name}' criado e agendado no launchd!",
+    notify_success_updated="Job '{name}' atualizado com sucesso.",
     notify_success_deleted="Job '{name}' excluído do sistema e do launchd.",
     notify_paused="Job '{name}' pausado.",
     notify_resumed="Job '{name}' reativado.",

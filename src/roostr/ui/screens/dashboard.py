@@ -705,6 +705,8 @@ class DashboardScreen(Screen):
             self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
         elif isinstance(event.item, JobListItem):
             self.show_job_details(event.item.job)
+            if hasattr(self.app, "action_edit_job"):
+                self.app.action_edit_job()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and isinstance(event.item, JobListItem):

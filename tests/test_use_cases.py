@@ -184,3 +184,36 @@ def test_execute_job_multi_times_of_day_idempotency(storage):
     # 4. Run at 14:31 -> SKIPPED_ALREADY_RAN
     status4, _ = use_case.execute("multi-exec-test", now=datetime(2026, 11, 9, 14, 31))
     assert status4 == ExecutionStatus.SKIPPED_ALREADY_RAN
+
+
+def test_manage_jobs_update_job(storage, terminal_job):
+    scheduler_mock = MagicMock()
+    use_case = ManageJobsUseCase(storage=storage, scheduler=scheduler_mock)
+    use_case.create_job(terminal_job)
+    assert scheduler_mock.install.call_count == 1
+
+    # Update job with new name and cwd
+    updated_job = Job(
+        id=terminal_job.id,
+        name="Review PR (Updated)",
+        cwd="/new/path",
+        command=terminal_job.command,
+        schedule=terminal_job.schedule,
+        target=terminal_job.target,
+        is_paused=False,
+        created_at=terminal_job.created_at,
+    )
+    use_case.update_job(updated_job)
+
+    # Storage should reflect updated attributes
+    stored = storage.get_job("review-pr")
+    assert stored is not None
+    assert stored.name == "Review PR (Updated)"
+    assert stored.cwd == "/new/path"
+    assert scheduler_mock.install.call_count == 2
+
+    # Update paused job -> should pause scheduler
+    updated_job.is_paused = True
+    use_case.update_job(updated_job)
+    assert scheduler_mock.pause.call_count == 1
+    assert scheduler_mock.pause.call_args[0][0] == "review-pr"

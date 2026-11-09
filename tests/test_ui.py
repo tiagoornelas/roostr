@@ -651,3 +651,83 @@ async def test_form_modal_tabbed_navigation(storage):
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, JobFormModal)
+
+
+@pytest.mark.asyncio
+async def test_app_action_edit_job_modal(storage, sample_job):
+    from textual.widgets import Input, Label
+
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    storage.save_job(sample_job)
+    manage_mock = MagicMock()
+    app = RoostrApp(storage=storage, locale="en", manage_use_case=manage_mock)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+
+        # Press 'e' to open JobFormModal in edit mode
+        await pilot.press("e")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        title_lbl = modal.query_one(".form-title", Label)
+        assert "Edit Agent Job" in str(title_lbl.render())
+
+        # Check pre-filled values
+        assert modal.query_one("#inp-name", Input).value == "Review PR"
+        assert modal.query_one("#inp-cwd", Input).value == "/path/to/project"
+        assert modal.query_one("#inp-command", Input).value == "claude '/review'"
+
+        # Edit name and command
+        modal.query_one("#inp-name", Input).value = "Review PR Renamed"
+        modal.query_one("#inp-command", Input).value = "claude '/review-all'"
+
+        # Save via ctrl+s
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert not isinstance(app.screen, JobFormModal)
+
+        # Verify update_job was called with updated details and same id
+        assert manage_mock.update_job.call_count == 1
+        updated = manage_mock.update_job.call_args[0][0]
+        assert updated.id == "review-pr"
+        assert updated.name == "Review PR Renamed"
+        assert updated.command == "claude '/review-all'"
+        assert updated.created_at == sample_job.created_at
+
+
+@pytest.mark.asyncio
+async def test_app_edit_job_via_enter_key(storage, sample_job):
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+
+        # Focus list and press enter on highlighted job
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, JobFormModal)
+
+
+@pytest.mark.asyncio
+async def test_app_action_edit_no_selection(storage):
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    # Empty storage - no job selected
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        # Should not open modal
+        assert not isinstance(app.screen, JobFormModal)

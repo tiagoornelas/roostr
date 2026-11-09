@@ -6,6 +6,7 @@ EN_MESSAGES = Messages(
     app_subtitle="Wake up your local AI coding agents on schedule",
     # Keybar bindings
     key_new_job="New Job",
+    key_edit_job="Edit",
     key_run_now="Run Now",
     key_move_job="Move to Folder",
     key_new_folder="New Folder",
@@ -186,6 +187,7 @@ EN_MESSAGES = Messages(
     msg_theme_changed="Theme changed to {theme}",
     msg_language_changed="Language changed to {lang}",
     notify_success_created="Job '{name}' created and scheduled in launchd!",
+    notify_success_updated="Job '{name}' updated successfully.",
     notify_success_deleted="Job '{name}' deleted from database and launchd.",
     notify_paused="Job '{name}' paused.",
     notify_resumed="Job '{name}' resumed.",

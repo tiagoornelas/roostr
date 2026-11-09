@@ -6,6 +6,7 @@ ES_MESSAGES = Messages(
     app_subtitle="Programador y orquestador local de agentes de IA",
     # Keybar bindings
     key_new_job="Nuevo Job",
+    key_edit_job="Editar",
     key_run_now="Ejecutar Ahora",
     key_move_job="Mover a Carpeta",
     key_new_folder="Nueva Carpeta",
@@ -186,6 +187,7 @@ ES_MESSAGES = Messages(
     msg_theme_changed="Tema cambiado a {theme}",
     msg_language_changed="Idioma cambiado a {lang}",
     notify_success_created="¡Job '{name}' creado y programado en launchd!",
+    notify_success_updated="Job '{name}' actualizado con éxito.",
     notify_success_deleted="Job '{name}' eliminado de la base de datos y launchd.",
     notify_paused="Job '{name}' pausado.",
     notify_resumed="Job '{name}' reanudado.",

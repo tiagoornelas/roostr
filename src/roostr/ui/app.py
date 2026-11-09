@@ -33,6 +33,7 @@ class RoostrApp(App):
 
     BINDINGS = [
         Binding("n", "new_job", "New Job", show=True),
+        Binding("e", "edit_job", "Edit", show=True),
         Binding("r", "run_now", "Run Now", show=True),
         Binding("m", "move_job", "Move to Folder", show=True),
         Binding("f", "new_folder", "New Folder", show=True),
@@ -104,6 +105,27 @@ class RoostrApp(App):
                     )
 
         self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
+
+    def action_edit_job(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            self.notify(self.msg.notify_no_selection, severity="warning")
+            return
+
+        job = self.dashboard_screen.selected_job
+
+        def on_modal_result(updated_job: Job | None) -> None:
+            if updated_job:
+                try:
+                    self.manage_use_case.update_job(updated_job)
+                    msg = self.msg.notify_success_updated.replace("{name}", updated_job.name)
+                    self.notify(msg, title=self.msg.title_success, severity="information")
+                    self.dashboard_screen.refresh_jobs(selected_job_id=updated_job.id)
+                except Exception as e:
+                    self.notify(
+                        self.msg.msg_error_saving_job.format(error=e), title=self.msg.title_error, severity="error"
+                    )
+
+        self.push_screen(JobFormModal(job=job, messages=self.msg), on_modal_result)
 
     def action_move_job(self) -> None:
         if not self.dashboard_screen.selected_job:
@@ -217,6 +239,7 @@ class RoostrApp(App):
     def _update_bindings_language(self) -> None:
         key_descriptions = {
             "n": self.msg.key_new_job,
+            "e": self.msg.key_edit_job,
             "r": self.msg.key_run_now,
             "m": self.msg.key_move_job,
             "f": self.msg.key_new_folder,

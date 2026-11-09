@@ -9,6 +9,7 @@ class Messages:
 
     # Keybar bindings
     key_new_job: str
+    key_edit_job: str
     key_run_now: str
     key_move_job: str
     key_new_folder: str
@@ -201,6 +202,7 @@ class Messages:
     msg_theme_changed: str
     msg_language_changed: str
     notify_success_created: str
+    notify_success_updated: str
     notify_success_deleted: str
     notify_paused: str
     notify_resumed: str

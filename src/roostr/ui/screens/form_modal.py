@@ -457,7 +457,12 @@ class JobFormModal(ModalScreen[Job | None]):
                                 ("iTerm2", "iterm2"),
                                 ("Kitty", "kitty"),
                             ]
-                            yield Select(term_apps, value="auto", id="sel-terminal-app")
+                            initial_term_app = (
+                                self.job.target.app.value
+                                if (self.job and isinstance(self.job.target, TerminalTargetConfig))
+                                else "auto"
+                            )
+                            yield Select(term_apps, value=initial_term_app, id="sel-terminal-app")
 
                         with Vertical(id="target-herdr-box", classes="target-box"):
                             yield Label(self.msg.lbl_herdr_space, classes="field-label")
@@ -698,7 +703,10 @@ class JobFormModal(ModalScreen[Job | None]):
         target: TargetConfig
         if target_type == "terminal":
             app_val = self.query_one("#sel-terminal-app", Select).value
-            target = TerminalTargetConfig(app=TerminalApp(app_val), keep_open=True)
+            keep_open = (
+                self.job.target.keep_open if (self.job and isinstance(self.job.target, TerminalTargetConfig)) else True
+            )
+            target = TerminalTargetConfig(app=TerminalApp(app_val), keep_open=keep_open)
         elif target_type == "herdr":
             space = self.query_one("#inp-herdr-space", Input).value.strip() or "Roostr"
             tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "{job.name} {DD}/{MM}"
@@ -718,6 +726,7 @@ class JobFormModal(ModalScreen[Job | None]):
             action=action,
             command=compiled_command,
             is_paused=self.job.is_paused if self.job else False,
+            created_at=self.job.created_at if self.job else None,
             folder=self.job.folder if self.job else None,
         )
         self.dismiss(job)
