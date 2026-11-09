@@ -1,0 +1,89 @@
+from datetime import datetime, time
+
+from roostr.domain.enums import TargetType, TerminalApp, ToleranceMode
+from roostr.domain.models import (
+    BackgroundTargetConfig,
+    HerdrTargetConfig,
+    Job,
+    SchedulePolicy,
+    TerminalTargetConfig,
+)
+
+
+def test_schedule_policy_is_active_on_day():
+    policy = SchedulePolicy(
+        days_of_week=(0, 1, 2, 3, 4),  # Mon-Fri
+        time_of_day=time(8, 0),
+        tolerance_mode=ToleranceMode.UNTIL_HOUR,
+        tolerance_value=12,
+    )
+    assert policy.is_active_on_weekday(0) is True
+    assert policy.is_active_on_weekday(4) is True
+    assert policy.is_active_on_weekday(5) is False
+    assert policy.is_active_on_weekday(6) is False
+
+
+def test_schedule_policy_is_within_window_until_hour():
+    policy = SchedulePolicy(
+        days_of_week=(0, 1, 2, 3, 4),
+        time_of_day=time(8, 0),
+        tolerance_mode=ToleranceMode.UNTIL_HOUR,
+        tolerance_value=12,
+    )
+    assert policy.is_within_window(datetime(2026, 11, 9, 8, 0)) is True
+    assert policy.is_within_window(datetime(2026, 11, 9, 11, 59)) is True
+    assert policy.is_within_window(datetime(2026, 11, 9, 12, 0)) is False
+    assert policy.is_within_window(datetime(2026, 11, 9, 7, 59)) is False
+
+
+def test_schedule_policy_exact_mode():
+    policy = SchedulePolicy(
+        days_of_week=(0, 1, 2, 3, 4),
+        time_of_day=time(17, 0),
+        tolerance_mode=ToleranceMode.EXACT,
+        tolerance_value=0,
+    )
+    assert policy.is_within_window(datetime(2026, 11, 9, 17, 0)) is True
+    assert policy.is_within_window(datetime(2026, 11, 9, 17, 1)) is True
+    assert policy.is_within_window(datetime(2026, 11, 9, 17, 5)) is False
+
+
+def test_job_sentinel_file_resolution(tmp_path):
+    sentinel_pattern = str(tmp_path / "reports/{YYYY}/{MM}/{YYYY-MM-DD}-daily.md")
+    job = Job(
+        id="daily-report",
+        name="Daily Report",
+        cwd=str(tmp_path),
+        command='claude "/daily-report"',
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            time_of_day=time(8, 0),
+            tolerance_mode=ToleranceMode.UNTIL_HOUR,
+            tolerance_value=12,
+        ),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO, keep_open=True),
+        sentinel_pattern=sentinel_pattern,
+    )
+
+    dt = datetime(2026, 11, 9, 8, 30)
+    resolved_path = job.resolve_sentinel_path(dt)
+    expected_path = tmp_path / "reports/2026/11/2026-11-09-daily.md"
+    assert resolved_path == str(expected_path)
+    assert job.sentinel_exists(dt) is False
+
+    expected_path.parent.mkdir(parents=True, exist_ok=True)
+    expected_path.touch()
+    assert job.sentinel_exists(dt) is True
+
+
+def test_target_configs():
+    terminal_target = TerminalTargetConfig(app=TerminalApp.GHOSTTY, keep_open=True)
+    assert terminal_target.target_type == TargetType.TERMINAL
+    assert terminal_target.app == TerminalApp.GHOSTTY
+
+    herdr_target = HerdrTargetConfig(space="Personal Coordinator", tab_template="Daily {DD}/{MM}")
+    assert herdr_target.target_type == TargetType.HERDR
+    assert herdr_target.space == "Personal Coordinator"
+
+    bg_target = BackgroundTargetConfig(notify_on_complete=True)
+    assert bg_target.target_type == TargetType.BACKGROUND

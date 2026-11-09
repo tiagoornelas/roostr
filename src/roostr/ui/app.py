@@ -1,0 +1,108 @@
+from textual import work
+from textual.app import App
+from textual.binding import Binding
+
+from roostr.application.ports import JobRepositoryPort
+from roostr.application.use_cases.execute_job import ExecuteJobUseCase
+from roostr.application.use_cases.manage_jobs import ManageJobsUseCase
+from roostr.domain.enums import ExecutionStatus
+from roostr.domain.models import Job
+from roostr.i18n.catalog import SUPPORTED_LOCALES, get_messages
+from roostr.ui.screens.dashboard import DashboardScreen
+from roostr.ui.screens.form_modal import JobFormModal
+
+
+class RoostrApp(App):
+    TITLE = "roostr"
+    SUB_TITLE = "Wake up your local AI coding agents on schedule"
+
+    BINDINGS = [
+        Binding("n", "new_job", "New Job", show=True),
+        Binding("r", "run_now", "Run Now", show=True),
+        Binding("p", "toggle_pause", "Pause/Resume", show=True),
+        Binding("d", "delete_job", "Delete", show=True),
+        Binding("l", "switch_language", "Language (EN/PT/ES)", show=True),
+        Binding("q", "quit", "Quit", show=True),
+    ]
+
+    def __init__(
+        self,
+        storage: JobRepositoryPort,
+        locale: str = "en",
+        execute_use_case: ExecuteJobUseCase | None = None,
+        manage_use_case: ManageJobsUseCase | None = None,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.storage = storage
+        self.locale = locale
+        self.msg = get_messages(self.locale)
+
+        self.execute_use_case = execute_use_case or ExecuteJobUseCase(storage=storage)
+        self.manage_use_case = manage_use_case or ManageJobsUseCase(storage=storage)
+        self.dashboard_screen = DashboardScreen(storage=self.storage, messages=self.msg)
+
+    def get_default_screen(self) -> DashboardScreen:
+        return self.dashboard_screen
+
+    def action_new_job(self) -> None:
+        def on_modal_result(job: Job | None) -> None:
+            if job:
+                try:
+                    self.manage_use_case.create_job(job)
+                    created_msg = self.msg.notify_success_created.replace("{name}", job.name)
+                    self.notify(created_msg, title="Success", severity="information")
+                    self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
+                except Exception as e:
+                    self.notify(f"Error saving job: {e}", title="Error", severity="error")
+
+        self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
+
+    def action_run_now(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            self.notify(self.msg.notify_no_selection, severity="warning")
+            return
+
+        job = self.dashboard_screen.selected_job
+        self._dispatch_run_now_async(job)
+
+    @work(thread=True)
+    def _dispatch_run_now_async(self, job: Job) -> None:
+        self.notify(self.msg.notify_running.replace("{name}", job.name), title="Executing")
+        status, msg = self.execute_use_case.execute(job.id, force=True)
+        if status == ExecutionStatus.SUCCESS:
+            self.notify(f"Success: {msg}", title="Completed", severity="information")
+        else:
+            self.notify(f"{status.value}: {msg}", title="Result", severity="warning")
+        self.call_from_thread(self.dashboard_screen.refresh_jobs, job.id)
+
+    def action_toggle_pause(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            return
+
+        job = self.dashboard_screen.selected_job
+        new_state = self.manage_use_case.toggle_pause(job.id)
+        if new_state:
+            notice = self.msg.notify_paused.replace("{name}", job.name)
+        else:
+            notice = self.msg.notify_resumed.replace("{name}", job.name)
+        self.notify(notice, title="Schedule")
+        self.dashboard_screen.refresh_jobs(selected_job_id=job.id)
+
+    def action_delete_job(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            return
+
+        job = self.dashboard_screen.selected_job
+        self.manage_use_case.delete_job(job.id)
+        deleted_msg = self.msg.notify_success_deleted.replace("{name}", job.name)
+        self.notify(deleted_msg, title="Deleted", severity="information")
+        self.dashboard_screen.refresh_jobs()
+
+    def action_switch_language(self) -> None:
+        current_idx = SUPPORTED_LOCALES.index(self.locale) if self.locale in SUPPORTED_LOCALES else 0
+        next_locale = SUPPORTED_LOCALES[(current_idx + 1) % len(SUPPORTED_LOCALES)]
+        self.locale = next_locale
+        self.msg = get_messages(self.locale)
+        self.dashboard_screen.update_messages(self.msg)
+        self.notify(f"Language changed to {self.locale.upper()}", title="i18n")
