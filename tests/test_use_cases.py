@@ -147,3 +147,40 @@ def test_manage_jobs_pure_storage_without_scheduler(storage, terminal_job):
 
     use_case.delete_job("review-pr")
     assert storage.get_job("review-pr") is None
+
+
+def test_execute_job_multi_times_of_day_idempotency(storage):
+    job = Job(
+        id="multi-exec-test",
+        name="Multi Exec Test",
+        cwd="/tmp",
+        command="echo ok",
+        schedule=SchedulePolicy(
+            days_of_week=(0,),
+            times_of_day=(time(7, 0), time(14, 30)),
+            tolerance_mode=ToleranceMode.EXACT,
+        ),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+    )
+    storage.save_job(job)
+
+    dispatcher_mock = MagicMock()
+    dispatcher_mock.dispatch.return_value = (True, "Dispatched")
+    notifier_mock = MagicMock()
+    use_case = ExecuteJobUseCase(storage=storage, dispatcher=dispatcher_mock, notifier=notifier_mock)
+
+    # 1. Run at 07:00 -> SUCCESS
+    status1, _ = use_case.execute("multi-exec-test", now=datetime(2026, 11, 9, 7, 0))
+    assert status1 == ExecutionStatus.SUCCESS
+
+    # 2. Run at 07:01 -> SKIPPED_ALREADY_RAN
+    status2, _ = use_case.execute("multi-exec-test", now=datetime(2026, 11, 9, 7, 1))
+    assert status2 == ExecutionStatus.SKIPPED_ALREADY_RAN
+
+    # 3. Run at 14:30 -> SUCCESS (different slot!)
+    status3, _ = use_case.execute("multi-exec-test", now=datetime(2026, 11, 9, 14, 30))
+    assert status3 == ExecutionStatus.SUCCESS
+
+    # 4. Run at 14:31 -> SKIPPED_ALREADY_RAN
+    status4, _ = use_case.execute("multi-exec-test", now=datetime(2026, 11, 9, 14, 31))
+    assert status4 == ExecutionStatus.SKIPPED_ALREADY_RAN

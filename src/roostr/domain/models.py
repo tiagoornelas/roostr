@@ -25,6 +25,38 @@ def slugify(text: str) -> str:
     return text or "job"
 
 
+def parse_time_string(s: str) -> time:
+    """Parse friendly time formats: 08:00, 8:00, 7am, 7:30 am, 2:30pm, 6 pm, 12pm, 12am."""
+    s = s.strip().lower()
+    is_pm = "pm" in s
+    is_am = "am" in s
+    clean = s.replace("am", "").replace("pm", "").strip()
+
+    if ":" in clean:
+        parts = clean.split(":")
+        h = int(parts[0])
+        m = int(parts[1])
+    else:
+        h = int(clean)
+        m = 0
+
+    if is_pm and h < 12:
+        h += 12
+    elif is_am and h == 12:
+        h = 0
+
+    return time(h, m)
+
+
+def parse_times_list(s: str) -> tuple[time, ...]:
+    """Parse comma-separated list of friendly time strings."""
+    raw_parts = [p.strip() for p in s.split(",") if p.strip()]
+    if not raw_parts:
+        return (time(8, 0),)
+    times = sorted(set(parse_time_string(p) for p in raw_parts))
+    return tuple(times)
+
+
 @dataclass(slots=True)
 class SchedulePolicy:
     days_of_week: tuple[int, ...]  # 0=Monday ... 6=Sunday
@@ -33,15 +65,38 @@ class SchedulePolicy:
     tolerance_value: int = 0  # until_hour (e.g. 12) or window_hours (e.g. 4)
     frequency: ScheduleFrequency = ScheduleFrequency.DAILY
     interval_value: int = 1
+    times_of_day: tuple[time, ...] = ()
+    start_time: time | None = None  # First call / start of active window (optional)
+    end_time: time | None = None  # Last call / end of active window (optional)
+
+    def __post_init__(self) -> None:
+        if not self.times_of_day:
+            object.__setattr__(self, "times_of_day", (self.time_of_day,))
+        elif self.time_of_day == time(8, 0) and self.times_of_day:
+            object.__setattr__(self, "time_of_day", self.times_of_day[0])
 
     def is_active_on_weekday(self, weekday: int) -> bool:
         return weekday in self.days_of_week
 
     def is_within_window(self, dt: datetime) -> bool:
         if self.frequency in (ScheduleFrequency.INTERVAL_HOURS, ScheduleFrequency.INTERVAL_MINUTES):
+            cur_t = dt.time()
+            if self.start_time and cur_t < self.start_time:
+                return False
+            if self.end_time and cur_t > self.end_time:
+                return False
             return True
 
-        target_minutes = self.time_of_day.hour * 60 + self.time_of_day.minute
+        return self.get_active_time_slot(dt) is not None
+
+    def get_active_time_slot(self, dt: datetime) -> time | None:
+        for tod in self.times_of_day:
+            if self.is_time_within_slot_window(tod, dt):
+                return tod
+        return None
+
+    def is_time_within_slot_window(self, tod: time, dt: datetime) -> bool:
+        target_minutes = tod.hour * 60 + tod.minute
         current_minutes = dt.hour * 60 + dt.minute
 
         if self.tolerance_mode == ToleranceMode.EXACT:
@@ -50,6 +105,8 @@ class SchedulePolicy:
         if self.tolerance_mode == ToleranceMode.UNTIL_HOUR:
             start_minutes = target_minutes
             end_minutes = self.tolerance_value * 60
+            if end_minutes <= start_minutes:
+                end_minutes = start_minutes + 60
             return start_minutes <= current_minutes < end_minutes
 
         if self.tolerance_mode == ToleranceMode.WINDOW_HOURS:
@@ -208,7 +265,7 @@ class Job:
         if resolved_schedule is None:
             raise ValueError("Job requires a SchedulePolicy")
         if resolved_target is None:
-            raise ValueError("Job requires a TargetConfig")
+            resolved_target = HerdrTargetConfig(space="Roostr")
 
         self.schedule = resolved_schedule
         self.target = resolved_target

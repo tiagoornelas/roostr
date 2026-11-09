@@ -24,6 +24,8 @@ from roostr.domain.models import (
     SchedulePolicy,
     TargetConfig,
     TerminalTargetConfig,
+    parse_time_string,
+    parse_times_list,
 )
 
 
@@ -67,7 +69,9 @@ class SQLiteStorage:
                     harness TEXT,
                     prompt TEXT,
                     frequency TEXT NOT NULL DEFAULT 'daily',
-                    interval_value INTEGER NOT NULL DEFAULT 1
+                    interval_value INTEGER NOT NULL DEFAULT 1,
+                    start_time TEXT,
+                    end_time TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS executions (
@@ -107,6 +111,10 @@ class SQLiteStorage:
                 conn.execute("ALTER TABLE jobs ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily'")
             if "interval_value" not in columns:
                 conn.execute("ALTER TABLE jobs ADD COLUMN interval_value INTEGER NOT NULL DEFAULT 1")
+            if "start_time" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
+            if "end_time" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN end_time TEXT")
 
             conn.execute(
                 """
@@ -124,6 +132,9 @@ class SQLiteStorage:
         prompt = job.action.prompt if isinstance(job.action, AgentAction) else None
         frequency = job.schedule.frequency.value
         interval_value = job.schedule.interval_value
+        times_str = ",".join(t.strftime("%H:%M") for t in job.schedule.times_of_day)
+        start_time_str = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else None
+        end_time_str = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else None
 
         with self._connection() as conn:
             conn.execute(
@@ -132,8 +143,8 @@ class SQLiteStorage:
                     id, name, cwd, command, days_of_week, time_of_day,
                     tolerance_mode, tolerance_value, target_type, target_config,
                     is_paused, created_at, folder, action_type, harness, prompt,
-                    frequency, interval_value
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    frequency, interval_value, start_time, end_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cwd = excluded.cwd,
@@ -150,7 +161,9 @@ class SQLiteStorage:
                     harness = excluded.harness,
                     prompt = excluded.prompt,
                     frequency = excluded.frequency,
-                    interval_value = excluded.interval_value
+                    interval_value = excluded.interval_value,
+                    start_time = excluded.start_time,
+                    end_time = excluded.end_time
                 """,
                 (
                     job.id,
@@ -158,7 +171,7 @@ class SQLiteStorage:
                     job.cwd,
                     job.command,
                     json.dumps(list(job.schedule.days_of_week)),
-                    job.schedule.time_of_day.strftime("%H:%M"),
+                    times_str,
                     job.schedule.tolerance_mode.value,
                     job.schedule.tolerance_value,
                     job.target.target_type.value,
@@ -171,6 +184,8 @@ class SQLiteStorage:
                     prompt,
                     frequency,
                     interval_value,
+                    start_time_str,
+                    end_time_str,
                 ),
             )
 
@@ -366,14 +381,20 @@ class SQLiteStorage:
         return TerminalTargetConfig()
 
     def _row_to_job(self, row: sqlite3.Row) -> Job:
-        h, m = map(int, row["time_of_day"].split(":"))
+        times_of_day = parse_times_list(row["time_of_day"])
+        time_of_day = times_of_day[0] if times_of_day else time(8, 0)
         freq_raw = row["frequency"] if "frequency" in row.keys() and row["frequency"] else "daily"
         interval_val = (
             row["interval_value"] if "interval_value" in row.keys() and row["interval_value"] is not None else 1
         )
+        start_time = parse_time_string(row["start_time"]) if "start_time" in row.keys() and row["start_time"] else None
+        end_time = parse_time_string(row["end_time"]) if "end_time" in row.keys() and row["end_time"] else None
         schedule = SchedulePolicy(
             days_of_week=tuple(json.loads(row["days_of_week"])),
-            time_of_day=time(h, m),
+            time_of_day=time_of_day,
+            times_of_day=times_of_day,
+            start_time=start_time,
+            end_time=end_time,
             tolerance_mode=ToleranceMode(row["tolerance_mode"]),
             tolerance_value=row["tolerance_value"],
             frequency=ScheduleFrequency(freq_raw),

@@ -193,3 +193,70 @@ def test_schedule_policy_frequencies():
         interval_value=30,
     )
     assert p_mins.is_within_window(datetime(2026, 11, 9, 23, 59)) is True
+
+
+def test_parse_time_string():
+    from roostr.domain.models import parse_time_string
+
+    assert parse_time_string("08:00") == time(8, 0)
+    assert parse_time_string("14:30") == time(14, 30)
+    assert parse_time_string("7am") == time(7, 0)
+    assert parse_time_string("7 AM") == time(7, 0)
+    assert parse_time_string("9:30 am") == time(9, 30)
+    assert parse_time_string("2:30 pm") == time(14, 30)
+    assert parse_time_string("6pm") == time(18, 0)
+    assert parse_time_string("12am") == time(0, 0)
+    assert parse_time_string("12pm") == time(12, 0)
+
+
+def test_parse_times_list():
+    from roostr.domain.models import parse_times_list
+
+    res = parse_times_list("7am, 9:30 am, 2:30 pm, 6pm")
+    assert res == (time(7, 0), time(9, 30), time(14, 30), time(18, 0))
+
+    res_empty = parse_times_list("")
+    assert res_empty == (time(8, 0),)
+
+
+def test_schedule_policy_multiple_times():
+    p = SchedulePolicy(
+        days_of_week=(0,),
+        times_of_day=(time(7, 0), time(9, 30), time(14, 30), time(18, 0)),
+        tolerance_mode=ToleranceMode.EXACT,
+    )
+    assert p.time_of_day == time(7, 0)
+    assert p.is_within_window(datetime(2026, 11, 9, 7, 0)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 9, 30)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 14, 31)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 18, 0)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 10, 0)) is False
+
+
+def test_schedule_policy_interval_window():
+    from roostr.domain.enums import ScheduleFrequency
+
+    p = SchedulePolicy(
+        days_of_week=(0,),
+        frequency=ScheduleFrequency.INTERVAL_HOURS,
+        interval_value=2,
+        start_time=time(9, 0),
+        end_time=time(18, 0),
+    )
+    assert p.is_within_window(datetime(2026, 11, 9, 8, 59)) is False
+    assert p.is_within_window(datetime(2026, 11, 9, 9, 0)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 14, 0)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 18, 0)) is True
+    assert p.is_within_window(datetime(2026, 11, 9, 18, 1)) is False
+
+
+def test_job_default_target_herdr():
+    job = Job(
+        id="test-default",
+        name="Test Default",
+        cwd="/tmp",
+        schedule=SchedulePolicy((0,), time(9, 0)),
+        command="echo hello",
+    )
+    assert isinstance(job.target, HerdrTargetConfig)
+    assert job.target.space == "Roostr"

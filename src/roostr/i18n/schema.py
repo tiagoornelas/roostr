@@ -126,6 +126,11 @@ class Messages:
     days_opt_everyday: str
     days_opt_custom: str
     lbl_time: str
+    lbl_time_hint: str
+    lbl_interval_window: str
+    lbl_interval_window_hint: str
+    lbl_start_time: str
+    lbl_end_time: str
     lbl_tolerance_section_title: str
     lbl_tolerance_explanation: str
     lbl_tolerance_mode: str

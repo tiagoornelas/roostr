@@ -57,14 +57,30 @@ class JobListItem(ListItem):
                 if self.msg.locale == "en"
                 else f"a cada {self.job.schedule.interval_value}h"
             )
+            if self.job.schedule.start_time and self.job.schedule.end_time:
+                sched_str += f" ({self.job.schedule.start_time.strftime('%H:%M')}–{self.job.schedule.end_time.strftime('%H:%M')})"
+            elif self.job.schedule.start_time:
+                sched_str += f" (>{self.job.schedule.start_time.strftime('%H:%M')})"
+            elif self.job.schedule.end_time:
+                sched_str += f" (<{self.job.schedule.end_time.strftime('%H:%M')})"
         elif self.job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
             sched_str = (
                 f"every {self.job.schedule.interval_value}m"
                 if self.msg.locale == "en"
                 else f"a cada {self.job.schedule.interval_value}m"
             )
+            if self.job.schedule.start_time and self.job.schedule.end_time:
+                sched_str += f" ({self.job.schedule.start_time.strftime('%H:%M')}–{self.job.schedule.end_time.strftime('%H:%M')})"
+            elif self.job.schedule.start_time:
+                sched_str += f" (>{self.job.schedule.start_time.strftime('%H:%M')})"
+            elif self.job.schedule.end_time:
+                sched_str += f" (<{self.job.schedule.end_time.strftime('%H:%M')})"
         else:
-            sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
+            if len(self.job.schedule.times_of_day) > 1:
+                times_joined = ", ".join(t.strftime("%H:%M") for t in self.job.schedule.times_of_day)
+                sched_str = times_joined if len(times_joined) <= 25 else f"{len(self.job.schedule.times_of_day)}x/day"
+            else:
+                sched_str = self.job.schedule.time_of_day.strftime("%H:%M")
         if len(self.job.schedule.days_of_week) == 5 and self.job.schedule.days_of_week == (0, 1, 2, 3, 4):
             days_str = self.msg.days_weekdays_short
         elif len(self.job.schedule.days_of_week) == 7:
@@ -729,6 +745,10 @@ class DashboardScreen(Screen):
                 if self.msg.locale == "en"
                 else f"A cada {job.schedule.interval_value}h"
             )
+            if job.schedule.start_time or job.schedule.end_time:
+                w_start = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else "00:00"
+                w_end = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else "23:59"
+                time_display += f" ({w_start} – {w_end})"
             tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
         elif job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES:
             time_display = (
@@ -736,9 +756,16 @@ class DashboardScreen(Screen):
                 if self.msg.locale == "en"
                 else f"A cada {job.schedule.interval_value}m"
             )
+            if job.schedule.start_time or job.schedule.end_time:
+                w_start = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else "00:00"
+                w_end = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else "23:59"
+                time_display += f" ({w_start} – {w_end})"
             tol_str = "N/A (Interval)" if self.msg.locale == "en" else "N/A (Intervalo)"
         else:
-            time_display = job.schedule.time_of_day.strftime("%H:%M")
+            if len(job.schedule.times_of_day) > 1:
+                time_display = ", ".join(t.strftime("%H:%M") for t in job.schedule.times_of_day)
+            else:
+                time_display = job.schedule.time_of_day.strftime("%H:%M")
             if job.schedule.tolerance_mode.value == "exact":
                 tol_str = self.msg.tol_exact_desc
             elif job.schedule.tolerance_mode.value == "until_hour":

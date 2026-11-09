@@ -220,3 +220,48 @@ def test_storage_save_and_retrieve_interval_job(storage):
     assert fetched.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES
     assert fetched.schedule.interval_value == 45
     assert fetched.schedule.days_of_week == (0, 2, 4)
+
+
+def test_storage_save_and_retrieve_multiple_times(storage):
+    job = Job(
+        id="multi-times-test",
+        name="Multi Times Test",
+        cwd="/tmp",
+        command="echo multi",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            times_of_day=(time(7, 0), time(9, 30), time(14, 30), time(18, 0)),
+        ),
+        target=HerdrTargetConfig(space="Roostr"),
+    )
+    storage.save_job(job)
+
+    fetched = storage.get_job("multi-times-test")
+    assert fetched is not None
+    assert fetched.schedule.times_of_day == (time(7, 0), time(9, 30), time(14, 30), time(18, 0))
+    assert fetched.schedule.time_of_day == time(7, 0)
+
+
+def test_storage_save_and_retrieve_interval_window(storage):
+    from roostr.domain.enums import ScheduleFrequency
+
+    job = Job(
+        id="window-test",
+        name="Window Test",
+        cwd="/tmp",
+        command="echo window",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            frequency=ScheduleFrequency.INTERVAL_HOURS,
+            interval_value=2,
+            start_time=time(8, 30),
+            end_time=time(17, 30),
+        ),
+        target=HerdrTargetConfig(space="Roostr"),
+    )
+    storage.save_job(job)
+
+    fetched = storage.get_job("window-test")
+    assert fetched is not None
+    assert fetched.schedule.start_time == time(8, 30)
+    assert fetched.schedule.end_time == time(17, 30)

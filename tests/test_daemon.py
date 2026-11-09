@@ -164,3 +164,73 @@ def test_daemon_tick_executes_due_jobs(storage, daily_job, interval_job):
     assert "daily-job" in executed_ids
     assert "interval-job" in executed_ids
     assert exec_mock.execute.call_count == 2
+
+
+def test_is_job_due_daily_multiple_times(storage):
+    job = Job(
+        id="multi-job",
+        name="Multi Job",
+        cwd="/tmp",
+        command="echo multi",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            times_of_day=(time(7, 0), time(14, 30)),
+            tolerance_mode=ToleranceMode.EXACT,
+        ),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+    )
+    storage.save_job(job)
+    exec_mock = MagicMock()
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=exec_mock)
+
+    # Monday 07:00 -> due
+    dt_morning = datetime(2026, 11, 9, 7, 0)
+    assert daemon.is_job_due(job, dt_morning) is True
+
+    # Record success for morning slot
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id="multi-job",
+            timestamp=dt_morning,
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+            details="Done morning",
+        )
+    )
+
+    # 07:01 -> not due (already ran in morning window)
+    assert daemon.is_job_due(job, datetime(2026, 11, 9, 7, 1)) is False
+
+    # 14:30 -> due for afternoon slot!
+    dt_afternoon = datetime(2026, 11, 9, 14, 30)
+    assert daemon.is_job_due(job, dt_afternoon) is True
+
+
+def test_is_job_due_interval_window_bounds(storage):
+    job = Job(
+        id="interval-window-job",
+        name="Interval Window Job",
+        cwd="/tmp",
+        command="echo win",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            frequency=ScheduleFrequency.INTERVAL_MINUTES,
+            interval_value=30,
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+        ),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+    )
+    storage.save_job(job)
+    exec_mock = MagicMock()
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=exec_mock)
+
+    # Before start_time (08:30) -> not due
+    assert daemon.is_job_due(job, datetime(2026, 11, 9, 8, 30)) is False
+
+    # At start_time (09:00) -> due
+    assert daemon.is_job_due(job, datetime(2026, 11, 9, 9, 0)) is True
+
+    # After end_time (17:05) -> not due
+    assert daemon.is_job_due(job, datetime(2026, 11, 9, 17, 5)) is False

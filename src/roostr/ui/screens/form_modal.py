@@ -34,6 +34,8 @@ from roostr.domain.models import (
     SchedulePolicy,
     TargetConfig,
     TerminalTargetConfig,
+    parse_time_string,
+    parse_times_list,
     slugify,
 )
 from roostr.i18n.schema import Messages
@@ -301,8 +303,17 @@ class JobFormModal(ModalScreen[Job | None]):
 
                         with Vertical(id="freq-daily-box", classes="freq-box"):
                             yield Label(self.msg.lbl_time, classes="field-label")
-                            initial_time = self.job.schedule.time_of_day.strftime("%H:%M") if self.job else "08:00"
-                            yield Input(placeholder="08:00", id="inp-time", value=initial_time)
+                            initial_time = (
+                                ", ".join(t.strftime("%H:%M") for t in self.job.schedule.times_of_day)
+                                if self.job
+                                else "08:00"
+                            )
+                            yield Input(
+                                placeholder="08:00 or 7am, 9:30am, 2:30pm...",
+                                id="inp-time",
+                                value=initial_time,
+                            )
+                            yield Label(self.msg.lbl_time_hint, classes="field-hint")
 
                             yield Label(self.msg.lbl_tolerance_section_title, classes="field-label")
                             yield Label(self.msg.lbl_tolerance_explanation, classes="field-hint")
@@ -368,6 +379,32 @@ class JobFormModal(ModalScreen[Job | None]):
                             )
                             yield Label(self.msg.lbl_interval_minutes_hint, classes="field-hint")
 
+                        with Vertical(id="freq-interval-window-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_interval_window, classes="field-label")
+                            yield Label(self.msg.lbl_interval_window_hint, classes="field-hint")
+                            yield Label(self.msg.lbl_start_time, classes="field-label")
+                            initial_start_val = (
+                                self.job.schedule.start_time.strftime("%H:%M")
+                                if (self.job and self.job.schedule.start_time)
+                                else ""
+                            )
+                            yield Input(
+                                placeholder="e.g. 09:00 or 9am (optional)",
+                                id="inp-interval-start-time",
+                                value=initial_start_val,
+                            )
+                            yield Label(self.msg.lbl_end_time, classes="field-label")
+                            initial_end_val = (
+                                self.job.schedule.end_time.strftime("%H:%M")
+                                if (self.job and self.job.schedule.end_time)
+                                else ""
+                            )
+                            yield Input(
+                                placeholder="e.g. 18:00 or 6pm (optional)",
+                                id="inp-interval-end-time",
+                                value=initial_end_val,
+                            )
+
                         # ACTIVE DAYS CHECKBOXES (Full width line)
                         yield Label(self.msg.lbl_days, classes="field-label")
                         active_days_set = set(self.job.schedule.days_of_week) if self.job else {0, 1, 2, 3, 4}
@@ -397,16 +434,18 @@ class JobFormModal(ModalScreen[Job | None]):
 
                         yield Label(self.msg.lbl_target_type, classes="field-label")
                         target_options = [
-                            (self.msg.target_opt_terminal, "terminal"),
                             (self.msg.target_opt_herdr, "herdr"),
+                            (self.msg.target_opt_terminal, "terminal"),
                             (self.msg.target_opt_background, "background"),
                         ]
-                        initial_target = "terminal"
+                        initial_target = "herdr"
                         if self.job:
-                            if isinstance(self.job.target, HerdrTargetConfig):
-                                initial_target = "herdr"
+                            if isinstance(self.job.target, TerminalTargetConfig):
+                                initial_target = "terminal"
                             elif isinstance(self.job.target, BackgroundTargetConfig):
                                 initial_target = "background"
+                            elif isinstance(self.job.target, HerdrTargetConfig):
+                                initial_target = "herdr"
                         yield Select(target_options, value=initial_target, id="sel-target-type")
 
                         with Vertical(id="target-terminal-box", classes="target-box"):
@@ -425,7 +464,7 @@ class JobFormModal(ModalScreen[Job | None]):
                             herdr_space = (
                                 self.job.target.space
                                 if isinstance(self.job and self.job.target, HerdrTargetConfig)
-                                else ""
+                                else "Roostr"
                             )
                             yield Input(
                                 placeholder="e.g. Roostr or Personal",
@@ -468,12 +507,14 @@ class JobFormModal(ModalScreen[Job | None]):
                 yield Button(self.msg.btn_save, variant="primary", id="btn-save")
 
     def on_mount(self) -> None:
-        initial_target = "terminal"
+        initial_target = "herdr"
         if self.job:
-            if isinstance(self.job.target, HerdrTargetConfig):
-                initial_target = "herdr"
+            if isinstance(self.job.target, TerminalTargetConfig):
+                initial_target = "terminal"
             elif isinstance(self.job.target, BackgroundTargetConfig):
                 initial_target = "background"
+            elif isinstance(self.job.target, HerdrTargetConfig):
+                initial_target = "herdr"
         self._update_target_visibility(initial_target)
 
         initial_action = "agent"
@@ -493,11 +534,6 @@ class JobFormModal(ModalScreen[Job | None]):
             return
         t_val = str(event.value)
         self._update_target_visibility(t_val)
-        if t_val == "herdr":
-            try:
-                self.query_one("#inp-herdr-space", Input).focus()
-            except Exception:
-                pass
 
     def _update_target_visibility(self, target_type: str) -> None:
         self.query_one("#target-terminal-box").display = target_type == "terminal"
@@ -514,6 +550,7 @@ class JobFormModal(ModalScreen[Job | None]):
         self.query_one("#freq-daily-box").display = freq == "daily"
         self.query_one("#freq-hours-box").display = freq == "interval_hours"
         self.query_one("#freq-minutes-box").display = freq == "interval_minutes"
+        self.query_one("#freq-interval-window-box").display = freq in ("interval_hours", "interval_minutes")
 
     @on(Select.Changed, "#sel-tolerance-mode")
     def on_tolerance_mode_changed(self, event: Select.Changed) -> None:
@@ -585,6 +622,9 @@ class JobFormModal(ModalScreen[Job | None]):
         frequency = ScheduleFrequency(freq_val)
 
         tod = time(8, 0)
+        times_of_day = (tod,)
+        start_time = None
+        end_time = None
         tol_mode = ToleranceMode.EXACT
         tol_val = 0
         interval_val = 1
@@ -592,8 +632,8 @@ class JobFormModal(ModalScreen[Job | None]):
         if frequency == ScheduleFrequency.DAILY:
             time_str = self.query_one("#inp-time", Input).value.strip()
             try:
-                parts = time_str.split(":")
-                tod = time(int(parts[0]), int(parts[1]))
+                times_of_day = parse_times_list(time_str)
+                tod = times_of_day[0]
             except Exception:
                 error_label.update(self.msg.err_invalid_time)
                 return
@@ -627,9 +667,28 @@ class JobFormModal(ModalScreen[Job | None]):
                 error_label.update(self.msg.err_invalid_interval)
                 return
 
+        if frequency in (ScheduleFrequency.INTERVAL_HOURS, ScheduleFrequency.INTERVAL_MINUTES):
+            start_str = self.query_one("#inp-interval-start-time", Input).value.strip()
+            end_str = self.query_one("#inp-interval-end-time", Input).value.strip()
+            if start_str:
+                try:
+                    start_time = parse_time_string(start_str)
+                except Exception:
+                    error_label.update(self.msg.err_invalid_time)
+                    return
+            if end_str:
+                try:
+                    end_time = parse_time_string(end_str)
+                except Exception:
+                    error_label.update(self.msg.err_invalid_time)
+                    return
+
         schedule = SchedulePolicy(
             days_of_week=selected_days,
             time_of_day=tod,
+            times_of_day=times_of_day,
+            start_time=start_time,
+            end_time=end_time,
             tolerance_mode=tol_mode,
             tolerance_value=tol_val,
             frequency=frequency,

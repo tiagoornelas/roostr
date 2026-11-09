@@ -382,7 +382,7 @@ async def test_app_action_new_agent_job_modal(storage):
     from textual.widgets import Input, Select, TextArea
 
     from roostr.domain.enums import ActionType, AIHarness
-    from roostr.domain.models import AgentAction
+    from roostr.domain.models import AgentAction, HerdrTargetConfig
     from roostr.ui.screens.form_modal import JobFormModal
 
     manage_mock = MagicMock()
@@ -418,6 +418,8 @@ async def test_app_action_new_agent_job_modal(storage):
         assert created_job.action.harness == AIHarness.CLAUDE
         assert "Check open PRs\nGenerate daily report" in created_job.action.prompt
         assert created_job.command.startswith("claude 'Check open PRs")
+        assert isinstance(created_job.target, HerdrTargetConfig)
+        assert created_job.target.space == "Roostr"
 
 
 @pytest.mark.asyncio

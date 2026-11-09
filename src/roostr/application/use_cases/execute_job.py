@@ -51,8 +51,24 @@ class ExecuteJobUseCase:
 
             # 3. Idempotency check via SQLite
             if job.schedule.frequency == ScheduleFrequency.DAILY:
-                if self.storage.has_succeeded_on_date(job_id, current_dt.date()):
-                    return ExecutionStatus.SKIPPED_ALREADY_RAN, "Already executed successfully today"
+                if len(job.schedule.times_of_day) <= 1:
+                    if self.storage.has_succeeded_on_date(job_id, current_dt.date()):
+                        return ExecutionStatus.SKIPPED_ALREADY_RAN, "Already executed successfully today"
+                else:
+                    active_slot = job.schedule.get_active_time_slot(current_dt)
+                    if active_slot:
+                        recent = self.storage.get_recent_executions(job_id, limit=20)
+                        already_ran = any(
+                            rec.status == ExecutionStatus.SUCCESS
+                            and rec.timestamp.date() == current_dt.date()
+                            and job.schedule.is_time_within_slot_window(active_slot, rec.timestamp)
+                            for rec in recent
+                        )
+                        if already_ran:
+                            return (
+                                ExecutionStatus.SKIPPED_ALREADY_RAN,
+                                f"Already executed successfully today for slot {active_slot.strftime('%H:%M')}",
+                            )
             else:
                 last_exec = self.storage.get_last_execution(job_id)
                 if last_exec and last_exec.status == ExecutionStatus.SUCCESS:

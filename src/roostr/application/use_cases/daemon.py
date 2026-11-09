@@ -36,9 +36,21 @@ class DaemonSchedulerUseCase:
 
         # 3. Frequency & idempotency checks
         if job.schedule.frequency == ScheduleFrequency.DAILY:
-            if self.storage.has_succeeded_on_date(job.id, now.date()):
+            if len(job.schedule.times_of_day) <= 1:
+                if self.storage.has_succeeded_on_date(job.id, now.date()):
+                    return False
+                return True
+            active_slot = job.schedule.get_active_time_slot(now)
+            if not active_slot:
                 return False
-            return True
+            recent = self.storage.get_recent_executions(job.id, limit=20)
+            already_ran = any(
+                rec.status == ExecutionStatus.SUCCESS
+                and rec.timestamp.date() == now.date()
+                and job.schedule.is_time_within_slot_window(active_slot, rec.timestamp)
+                for rec in recent
+            )
+            return not already_ran
         else:
             last_exec = self.storage.get_last_execution(job.id)
             if not last_exec or last_exec.status != ExecutionStatus.SUCCESS:
