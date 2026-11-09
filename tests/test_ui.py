@@ -616,3 +616,36 @@ async def test_form_modal_frequency_tolerance_and_days(storage):
         assert saved.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS
         assert saved.schedule.interval_value == 3
         assert saved.schedule.days_of_week == (0, 2)
+
+
+@pytest.mark.asyncio
+async def test_form_modal_tabbed_navigation(storage):
+    from textual.widgets import TabbedContent
+
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        tabs = modal.query_one("#form-tabs", TabbedContent)
+        assert tabs.active == "tab-action"
+
+        # Switch to Schedule tab
+        tabs.active = "tab-schedule"
+        await pilot.pause()
+        assert tabs.active == "tab-schedule"
+
+        # Switch to Target tab
+        tabs.active = "tab-target"
+        await pilot.pause()
+        assert tabs.active == "tab-target"
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, JobFormModal)

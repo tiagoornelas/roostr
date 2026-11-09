@@ -69,6 +69,9 @@ PT_BR_MESSAGES = Messages(
     # Form modal
     modal_title_new="Criar Novo Job de Agente",
     modal_title_edit="Editar Job de Agente",
+    tab_agent_action="🤖 Agente & Prompt",
+    tab_schedule="⏱️ Agendamento",
+    tab_target_env="🎯 Destino & Ambiente",
     modal_title_move="Mover Job para Pasta",
     modal_title_new_folder="Criar Nova Pasta",
     lbl_no_folder_root="[ Raiz (Sem Pasta) ]",

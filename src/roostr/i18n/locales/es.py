@@ -69,6 +69,9 @@ ES_MESSAGES = Messages(
     # Form modal
     modal_title_new="Crear Nuevo Job de Agente",
     modal_title_edit="Editar Job de Agente",
+    tab_agent_action="🤖 Agente & Prompt",
+    tab_schedule="⏱️ Programación",
+    tab_target_env="🎯 Destino & Entorno",
     modal_title_move="Mover Job a Carpeta",
     modal_title_new_folder="Crear Nueva Carpeta",
     lbl_no_folder_root="[ Raíz (Sin Carpeta) ]",

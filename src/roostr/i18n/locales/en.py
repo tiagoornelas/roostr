@@ -69,6 +69,9 @@ EN_MESSAGES = Messages(
     # Form modal
     modal_title_new="Create Scheduled Agent Job",
     modal_title_edit="Edit Agent Job",
+    tab_agent_action="🤖 Agent & Prompt",
+    tab_schedule="⏱️ Schedule",
+    tab_target_env="🎯 Target & CWD",
     modal_title_move="Move Job to Folder",
     modal_title_new_folder="Create New Folder",
     lbl_no_folder_root="[ Root (No Folder) ]",

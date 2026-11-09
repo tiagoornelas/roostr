@@ -78,6 +78,9 @@ class Messages:
     # Form modal
     modal_title_new: str
     modal_title_edit: str
+    tab_agent_action: str
+    tab_schedule: str
+    tab_target_env: str
     modal_title_move: str
     modal_title_new_folder: str
     lbl_no_folder_root: str

@@ -6,7 +6,16 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, Select, TextArea
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    Label,
+    Select,
+    TabbedContent,
+    TabPane,
+    TextArea,
+)
 
 from roostr.domain.enums import (
     ActionType,
@@ -64,10 +73,11 @@ class JobFormModal(ModalScreen[Job | None]):
     }
 
     #form-container {
-        width: 92%;
-        max-width: 138;
-        min-width: 86;
-        max-height: 94%;
+        width: 88%;
+        max-width: 104;
+        min-width: 60;
+        height: auto;
+        max-height: 92%;
         background: $background;
         border: solid $primary;
         padding: 1 2;
@@ -77,48 +87,33 @@ class JobFormModal(ModalScreen[Job | None]):
     .form-title {
         text-style: bold;
         color: $primary;
-        margin-bottom: 1;
+        margin-bottom: 0;
         text-align: center;
         width: 100%;
     }
 
-    #form-scroll {
+    #form-tabs {
         height: auto;
-        max-height: 84%;
-    }
-
-    #form-columns {
-        height: auto;
-        width: 100%;
-    }
-
-    .form-column {
-        width: 1fr;
-        height: auto;
-    }
-
-    #form-col-left {
-        border-right: solid $panel;
-        padding-right: 2;
-    }
-
-    #form-col-right {
-        padding-left: 2;
-    }
-
-    .section-title {
-        text-style: bold;
-        color: $primary;
+        max-height: 72vh;
         margin-top: 0;
-        margin-bottom: 0;
-        padding-bottom: 0;
+    }
+
+    TabPane {
+        padding: 0 1;
+        height: auto;
+    }
+
+    .tab-scroll {
+        height: auto;
+        max-height: 60vh;
+        padding-right: 1;
     }
 
     .field-label {
         color: $secondary;
         margin-top: 1;
         margin-bottom: 0;
-        height: 1;
+        height: auto;
     }
 
     .field-hint {
@@ -136,6 +131,7 @@ class JobFormModal(ModalScreen[Job | None]):
         height: 3;
         margin-top: 0;
         margin-bottom: 0;
+        width: 100%;
     }
 
     Input:focus, Select:focus {
@@ -147,46 +143,32 @@ class JobFormModal(ModalScreen[Job | None]):
         layout: horizontal;
         margin-top: 0;
         margin-bottom: 0;
+        width: 100%;
     }
 
     .day-checkbox {
         width: auto;
-        margin-right: 1;
+        margin-right: 2;
         background: transparent;
         border: none;
         height: 1;
     }
 
-    .freq-box {
-        height: auto;
-        margin-top: 0;
-    }
-
-    .tol-box {
-        height: auto;
-        margin-top: 0;
-    }
-
-    .target-box {
-        height: auto;
-        margin-top: 1;
-        padding: 0 1;
-        border: solid $panel;
-        background: $background;
-    }
-
-    .action-box {
+    .freq-box, .tol-box, .target-box, .action-box {
         height: auto;
         margin-top: 0;
         padding: 0;
+        border: none;
+        background: transparent;
     }
 
     #inp-prompt {
-        height: 14;
+        height: 9;
         background: $panel;
         border: solid $panel;
         color: $foreground;
         margin-top: 0;
+        width: 100%;
     }
 
     #inp-prompt:focus {
@@ -220,7 +202,7 @@ class JobFormModal(ModalScreen[Job | None]):
     #error-label {
         color: $error;
         text-style: bold;
-        margin-top: 1;
+        margin-top: 0;
         height: 1;
     }
     """
@@ -248,12 +230,10 @@ class JobFormModal(ModalScreen[Job | None]):
             title = self.msg.modal_title_edit if self.job else self.msg.modal_title_new
             yield Label(title, classes="form-title")
 
-            with VerticalScroll(id="form-scroll"):
-                with Horizontal(id="form-columns"):
-                    # LEFT COLUMN: General settings, Target & Schedule
-                    with Vertical(id="form-col-left", classes="form-column"):
-                        yield Label(self.msg.inspector_schedule, classes="section-title")
-
+            with TabbedContent(id="form-tabs"):
+                # TAB 1: Action, Prompt & Agent
+                with TabPane(self.msg.tab_agent_action, id="tab-action"):
+                    with VerticalScroll(classes="tab-scroll"):
                         yield Label(self.msg.lbl_job_name, classes="field-label")
                         yield Input(
                             placeholder="e.g. Daily PR Review",
@@ -261,6 +241,153 @@ class JobFormModal(ModalScreen[Job | None]):
                             value=self.job.name if self.job else "",
                         )
 
+                        yield Label(self.msg.lbl_action_type, classes="field-label")
+                        action_options = [
+                            (self.msg.lbl_action_agent, "agent"),
+                            (self.msg.lbl_action_command, "command"),
+                        ]
+                        initial_action_type = "agent"
+                        if self.job and self.job.action.action_type == ActionType.COMMAND:
+                            initial_action_type = "command"
+                        yield Select(action_options, value=initial_action_type, id="sel-action-type")
+
+                        with Vertical(id="action-agent-box", classes="action-box"):
+                            yield Label(self.msg.lbl_harness, classes="field-label")
+                            harness_options = [
+                                ("Claude Code (claude)", "claude"),
+                                ("Antigravity (agy)", "antigravity"),
+                                ("Cursor (cursor)", "cursor"),
+                                ("Codex (codex)", "codex"),
+                            ]
+                            initial_harness = "claude"
+                            initial_prompt = ""
+                            if self.job and isinstance(self.job.action, AgentAction):
+                                initial_harness = self.job.action.harness.value
+                                initial_prompt = self.job.action.prompt
+                            yield Select(harness_options, value=initial_harness, id="sel-harness")
+
+                            yield Label(self.msg.lbl_prompt, classes="field-label")
+                            yield PromptTextArea(
+                                text=initial_prompt,
+                                id="inp-prompt",
+                                language="markdown",
+                            )
+                            yield Label(self.msg.lbl_prompt_hint, classes="field-hint")
+
+                        with Vertical(id="action-command-box", classes="action-box"):
+                            yield Label(self.msg.lbl_command, classes="field-label")
+                            initial_cmd = (
+                                self.job.action.command
+                                if self.job and isinstance(self.job.action, CommandAction)
+                                else (self.job.command if self.job else "")
+                            )
+                            yield Input(
+                                placeholder=self.msg.lbl_command_placeholder,
+                                id="inp-command",
+                                value=initial_cmd,
+                            )
+
+                # TAB 2: Schedule & Tolerance
+                with TabPane(self.msg.tab_schedule, id="tab-schedule"):
+                    with VerticalScroll(classes="tab-scroll"):
+                        yield Label(self.msg.lbl_frequency, classes="field-label")
+                        freq_options = [
+                            (self.msg.freq_opt_daily, "daily"),
+                            (self.msg.freq_opt_interval_hours, "interval_hours"),
+                            (self.msg.freq_opt_interval_minutes, "interval_minutes"),
+                        ]
+                        initial_freq = self.job.schedule.frequency.value if self.job else "daily"
+                        yield Select(freq_options, value=initial_freq, id="sel-frequency")
+
+                        with Vertical(id="freq-daily-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_time, classes="field-label")
+                            initial_time = self.job.schedule.time_of_day.strftime("%H:%M") if self.job else "08:00"
+                            yield Input(placeholder="08:00", id="inp-time", value=initial_time)
+
+                            yield Label(self.msg.lbl_tolerance_section_title, classes="field-label")
+                            yield Label(self.msg.lbl_tolerance_explanation, classes="field-hint")
+                            tol_options = [
+                                (self.msg.tol_opt_until_hour, "until_hour"),
+                                (self.msg.tol_opt_hours_window, "window_hours"),
+                                (self.msg.tol_opt_exact, "exact"),
+                            ]
+                            initial_tol = self.job.schedule.tolerance_mode.value if self.job else "until_hour"
+                            yield Select(tol_options, value=initial_tol, id="sel-tolerance-mode")
+
+                            with Vertical(id="tol-until-hour-box", classes="tol-box"):
+                                yield Label(self.msg.lbl_tol_until_hour_input, classes="field-label")
+                                initial_until_val = (
+                                    f"{self.job.schedule.tolerance_value:02d}:00"
+                                    if (self.job and self.job.schedule.tolerance_mode == ToleranceMode.UNTIL_HOUR)
+                                    else "12:00"
+                                )
+                                yield Input(
+                                    placeholder="12:00",
+                                    id="inp-tol-until-hour",
+                                    value=initial_until_val,
+                                )
+
+                            with Vertical(id="tol-hours-window-box", classes="tol-box"):
+                                yield Label(self.msg.lbl_tol_window_hours_input, classes="field-label")
+                                initial_window_val = (
+                                    str(self.job.schedule.tolerance_value)
+                                    if (self.job and self.job.schedule.tolerance_mode == ToleranceMode.WINDOW_HOURS)
+                                    else "3"
+                                )
+                                yield Input(
+                                    placeholder="3",
+                                    id="inp-tol-window-hours",
+                                    value=initial_window_val,
+                                )
+
+                        with Vertical(id="freq-hours-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_interval_hours, classes="field-label")
+                            initial_hours_val = (
+                                str(self.job.schedule.interval_value)
+                                if (self.job and self.job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS)
+                                else "2"
+                            )
+                            yield Input(
+                                placeholder="2",
+                                id="inp-interval-hours",
+                                value=initial_hours_val,
+                            )
+                            yield Label(self.msg.lbl_interval_hours_hint, classes="field-hint")
+
+                        with Vertical(id="freq-minutes-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_interval_minutes, classes="field-label")
+                            initial_minutes_val = (
+                                str(self.job.schedule.interval_value)
+                                if (self.job and self.job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES)
+                                else "30"
+                            )
+                            yield Input(
+                                placeholder="30",
+                                id="inp-interval-minutes",
+                                value=initial_minutes_val,
+                            )
+                            yield Label(self.msg.lbl_interval_minutes_hint, classes="field-hint")
+
+                        # ACTIVE DAYS CHECKBOXES (Full width line)
+                        yield Label(self.msg.lbl_days, classes="field-label")
+                        active_days_set = set(self.job.schedule.days_of_week) if self.job else {0, 1, 2, 3, 4}
+                        with Horizontal(id="days-checkbox-row", classes="days-row"):
+                            for day_idx in range(7):
+                                abbr = (
+                                    self.msg.days_names_abbr[day_idx]
+                                    if day_idx < len(self.msg.days_names_abbr)
+                                    else str(day_idx)
+                                )
+                                yield Checkbox(
+                                    abbr,
+                                    value=(day_idx in active_days_set),
+                                    id=f"chk-day-{day_idx}",
+                                    classes="day-checkbox",
+                                )
+
+                # TAB 3: Target & Environment
+                with TabPane(self.msg.tab_target_env, id="tab-target"):
+                    with VerticalScroll(classes="tab-scroll"):
                         yield Label(self.msg.lbl_cwd, classes="field-label")
                         yield Input(
                             placeholder="/path/to/project",
@@ -313,7 +440,11 @@ class JobFormModal(ModalScreen[Job | None]):
                                 if isinstance(self.job and self.job.target, HerdrTargetConfig)
                                 else "{job.name} {DD}/{MM}"
                             )
-                            yield Input(placeholder="Daily {DD}/{MM}", id="inp-herdr-tab", value=herdr_tab)
+                            yield Input(
+                                placeholder="Daily {DD}/{MM}",
+                                id="inp-herdr-tab",
+                                value=herdr_tab,
+                            )
                             yield Label(self.msg.lbl_tab_template_hint, classes="field-hint")
 
                         with Vertical(id="target-background-box", classes="target-box"):
@@ -324,136 +455,10 @@ class JobFormModal(ModalScreen[Job | None]):
                                 and self.job.target.log_file
                                 else ""
                             )
-                            yield Input(placeholder="~/.local/state/roostr/logs/...", id="inp-bg-log", value=bg_log)
-
-                        # FREQUENCY & SCHEDULE
-                        yield Label(self.msg.lbl_frequency, classes="field-label")
-                        freq_options = [
-                            (self.msg.freq_opt_daily, "daily"),
-                            (self.msg.freq_opt_interval_hours, "interval_hours"),
-                            (self.msg.freq_opt_interval_minutes, "interval_minutes"),
-                        ]
-                        initial_freq = self.job.schedule.frequency.value if self.job else "daily"
-                        yield Select(freq_options, value=initial_freq, id="sel-frequency")
-
-                        with Vertical(id="freq-daily-box", classes="freq-box"):
-                            yield Label(self.msg.lbl_time, classes="field-label")
-                            initial_time = self.job.schedule.time_of_day.strftime("%H:%M") if self.job else "08:00"
-                            yield Input(placeholder="08:00", id="inp-time", value=initial_time)
-
-                            yield Label(self.msg.lbl_tolerance_section_title, classes="field-label")
-                            yield Label(self.msg.lbl_tolerance_explanation, classes="field-hint")
-                            tol_options = [
-                                (self.msg.tol_opt_until_hour, "until_hour"),
-                                (self.msg.tol_opt_hours_window, "window_hours"),
-                                (self.msg.tol_opt_exact, "exact"),
-                            ]
-                            initial_tol = self.job.schedule.tolerance_mode.value if self.job else "until_hour"
-                            yield Select(tol_options, value=initial_tol, id="sel-tolerance-mode")
-
-                            with Vertical(id="tol-until-hour-box", classes="tol-box"):
-                                yield Label(self.msg.lbl_tol_until_hour_input, classes="field-label")
-                                initial_until_val = (
-                                    f"{self.job.schedule.tolerance_value:02d}:00"
-                                    if (self.job and self.job.schedule.tolerance_mode == ToleranceMode.UNTIL_HOUR)
-                                    else "12:00"
-                                )
-                                yield Input(placeholder="12:00", id="inp-tol-until-hour", value=initial_until_val)
-
-                            with Vertical(id="tol-hours-window-box", classes="tol-box"):
-                                yield Label(self.msg.lbl_tol_window_hours_input, classes="field-label")
-                                initial_window_val = (
-                                    str(self.job.schedule.tolerance_value)
-                                    if (self.job and self.job.schedule.tolerance_mode == ToleranceMode.WINDOW_HOURS)
-                                    else "3"
-                                )
-                                yield Input(placeholder="3", id="inp-tol-window-hours", value=initial_window_val)
-
-                        with Vertical(id="freq-hours-box", classes="freq-box"):
-                            yield Label(self.msg.lbl_interval_hours, classes="field-label")
-                            initial_hours_val = (
-                                str(self.job.schedule.interval_value)
-                                if (self.job and self.job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS)
-                                else "2"
-                            )
-                            yield Input(placeholder="2", id="inp-interval-hours", value=initial_hours_val)
-                            yield Label(self.msg.lbl_interval_hours_hint, classes="field-hint")
-
-                        with Vertical(id="freq-minutes-box", classes="freq-box"):
-                            yield Label(self.msg.lbl_interval_minutes, classes="field-label")
-                            initial_minutes_val = (
-                                str(self.job.schedule.interval_value)
-                                if (self.job and self.job.schedule.frequency == ScheduleFrequency.INTERVAL_MINUTES)
-                                else "30"
-                            )
-                            yield Input(placeholder="30", id="inp-interval-minutes", value=initial_minutes_val)
-                            yield Label(self.msg.lbl_interval_minutes_hint, classes="field-hint")
-
-                        # ACTIVE DAYS CHECKBOXES
-                        yield Label(self.msg.lbl_days, classes="field-label")
-                        active_days_set = set(self.job.schedule.days_of_week) if self.job else {0, 1, 2, 3, 4}
-                        with Horizontal(id="days-checkbox-row", classes="days-row"):
-                            for day_idx in range(7):
-                                abbr = (
-                                    self.msg.days_names_abbr[day_idx]
-                                    if day_idx < len(self.msg.days_names_abbr)
-                                    else str(day_idx)
-                                )
-                                yield Checkbox(
-                                    abbr,
-                                    value=(day_idx in active_days_set),
-                                    id=f"chk-day-{day_idx}",
-                                    classes="day-checkbox",
-                                )
-
-                    # RIGHT COLUMN: Execution Action & Prompt
-                    with Vertical(id="form-col-right", classes="form-column"):
-                        yield Label(self.msg.inspector_action, classes="section-title")
-
-                        yield Label(self.msg.lbl_action_type, classes="field-label")
-                        action_options = [
-                            (self.msg.lbl_action_agent, "agent"),
-                            (self.msg.lbl_action_command, "command"),
-                        ]
-                        initial_action_type = "agent"
-                        if self.job and self.job.action.action_type == ActionType.COMMAND:
-                            initial_action_type = "command"
-                        yield Select(action_options, value=initial_action_type, id="sel-action-type")
-
-                        with Vertical(id="action-agent-box", classes="action-box"):
-                            yield Label(self.msg.lbl_harness, classes="field-label")
-                            harness_options = [
-                                ("Claude Code (claude)", "claude"),
-                                ("Antigravity (agy)", "antigravity"),
-                                ("Cursor (cursor)", "cursor"),
-                                ("Codex (codex)", "codex"),
-                            ]
-                            initial_harness = "claude"
-                            initial_prompt = ""
-                            if self.job and isinstance(self.job.action, AgentAction):
-                                initial_harness = self.job.action.harness.value
-                                initial_prompt = self.job.action.prompt
-                            yield Select(harness_options, value=initial_harness, id="sel-harness")
-
-                            yield Label(self.msg.lbl_prompt, classes="field-label")
-                            yield PromptTextArea(
-                                text=initial_prompt,
-                                id="inp-prompt",
-                                language="markdown",
-                            )
-                            yield Label(self.msg.lbl_prompt_hint, classes="field-hint")
-
-                        with Vertical(id="action-command-box", classes="action-box"):
-                            yield Label(self.msg.lbl_command, classes="field-label")
-                            initial_cmd = (
-                                self.job.action.command
-                                if self.job and isinstance(self.job.action, CommandAction)
-                                else (self.job.command if self.job else "")
-                            )
                             yield Input(
-                                placeholder=self.msg.lbl_command_placeholder,
-                                id="inp-command",
-                                value=initial_cmd,
+                                placeholder="~/.local/state/roostr/logs/...",
+                                id="inp-bg-log",
+                                value=bg_log,
                             )
 
             yield Label("", id="error-label")
@@ -537,41 +542,45 @@ class JobFormModal(ModalScreen[Job | None]):
 
     @on(Button.Pressed, "#btn-save")
     def on_save(self) -> None:
-        job_name = self.query_one("#inp-name", Input).value.strip()
+        error_label = self.query_one("#error-label", Label)
+        name = self.query_one("#inp-name", Input).value.strip()
         cwd = self.query_one("#inp-cwd", Input).value.strip()
         target_type = self.query_one("#sel-target-type", Select).value
+        action_type = self.query_one("#sel-action-type", Select).value
 
-        error_label = self.query_one("#error-label", Label)
+        # Infer job id from name using slugify (or keep existing id if editing)
+        job_id = self.job.id if self.job else slugify(name)
 
-        if not job_name:
+        if not job_id or not name or not cwd:
             error_label.update(self.msg.err_required_fields)
             return
 
-        job_id = self.job.id if self.job else slugify(job_name)
-
-        action_type_val = self.query_one("#sel-action-type", Select).value
         action: JobAction
-        if action_type_val == "agent":
+        compiled_command: str = ""
+        if action_type == "agent":
             harness_val = str(self.query_one("#sel-harness", Select).value)
-            prompt_val = self.query_one("#inp-prompt", TextArea).text.strip()
-            if not prompt_val:
+            prompt_text = self.query_one("#inp-prompt", PromptTextArea).text.strip()
+            if not prompt_text:
                 error_label.update(self.msg.err_empty_prompt)
                 return
-            action = AgentAction(harness=AIHarness(harness_val), prompt=prompt_val)
+            harness = AIHarness(harness_val)
+            action = AgentAction(harness=harness, prompt=prompt_text)
+            compiled_command = action.compile()
         else:
-            command_val = self.query_one("#inp-command", Input).value.strip()
-            if not command_val:
+            cmd_text = self.query_one("#inp-command", Input).value.strip()
+            if not cmd_text:
                 error_label.update(self.msg.err_empty_command)
                 return
-            action = CommandAction(command=command_val)
+            action = CommandAction(command=cmd_text)
+            compiled_command = action.compile()
 
-        # Active Days from Checkboxes
-        selected_days = tuple(d for d in range(7) if self.query_one(f"#chk-day-{d}", Checkbox).value)
+        # Extract selected days from 7 checkboxes
+        selected_days = tuple(day_idx for day_idx in range(7) if self.query_one(f"#chk-day-{day_idx}", Checkbox).value)
         if not selected_days:
             error_label.update(self.msg.err_no_days_selected)
             return
 
-        # Frequency & Schedule
+        # Frequency & Schedule resolution
         freq_val = str(self.query_one("#sel-frequency", Select).value)
         frequency = ScheduleFrequency(freq_val)
 
@@ -584,9 +593,7 @@ class JobFormModal(ModalScreen[Job | None]):
             time_str = self.query_one("#inp-time", Input).value.strip()
             try:
                 parts = time_str.split(":")
-                hour = int(parts[0])
-                minute = int(parts[1]) if len(parts) > 1 else 0
-                tod = time(hour, minute)
+                tod = time(int(parts[0]), int(parts[1]))
             except Exception:
                 error_label.update(self.msg.err_invalid_time)
                 return
@@ -637,21 +644,21 @@ class JobFormModal(ModalScreen[Job | None]):
             space = self.query_one("#inp-herdr-space", Input).value.strip() or "Roostr"
             tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "{job.name} {DD}/{MM}"
             target = HerdrTargetConfig(space=space, tab_template=tab_template)
+        elif target_type == "background":
+            bg_log = self.query_one("#inp-bg-log", Input).value.strip() or None
+            target = BackgroundTargetConfig(log_file=bg_log)
         else:
-            log_file = self.query_one("#inp-bg-log", Input).value.strip() or None
-            target = BackgroundTargetConfig(log_file=log_file, notify_on_complete=True)
-
-        folder_val = self.job.folder if self.job else None
+            target = TerminalTargetConfig()
 
         job = Job(
             id=job_id,
-            name=job_name,
+            name=name,
             cwd=cwd,
             schedule=schedule,
             target=target,
             action=action,
+            command=compiled_command,
             is_paused=self.job.is_paused if self.job else False,
-            folder=folder_val,
+            folder=self.job.folder if self.job else None,
         )
-
         self.dismiss(job)
