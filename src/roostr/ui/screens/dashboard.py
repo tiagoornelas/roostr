@@ -160,8 +160,7 @@ class DashboardScreen(Screen):
         dock: bottom;
         height: 1;
         layout: horizontal;
-        background: $background;
-        border-top: solid $panel;
+        background: $panel;
     }
 
     #footer-brand {
@@ -169,7 +168,7 @@ class DashboardScreen(Screen):
         padding: 0 1;
         color: $foreground;
         text-style: bold;
-        background: $background;
+        background: transparent;
     }
 
     #bottom-bar Footer {
