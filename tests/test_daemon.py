@@ -234,3 +234,87 @@ def test_is_job_due_interval_window_bounds(storage):
 
     # After end_time (17:05) -> not due
     assert daemon.is_job_due(job, datetime(2026, 11, 9, 17, 5)) is False
+
+
+def test_calculate_next_job_run_daily_future_today(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    storage.save_job(daily_job)
+    # Monday 08:00 (daily_job is at 09:00)
+    now = datetime(2026, 11, 9, 8, 0, 0)  # 2026-11-09 is Monday
+    next_run = calculate_next_job_run(daily_job, now, storage)
+    assert next_run == datetime(2026, 11, 9, 9, 0, 2)
+
+
+def test_calculate_next_job_run_daily_already_ran_today(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    storage.save_job(daily_job)
+    now = datetime(2026, 11, 9, 10, 0, 0)
+    # Record success today
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=daily_job.id,
+            timestamp=datetime(2026, 11, 9, 9, 0, 1),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+        )
+    )
+    next_run = calculate_next_job_run(daily_job, now, storage)
+    # Tomorrow Tuesday 09:00:02
+    assert next_run == datetime(2026, 11, 10, 9, 0, 2)
+
+
+def test_calculate_next_job_run_daily_failed_in_tolerance(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    storage.save_job(daily_job)
+    now = datetime(2026, 11, 9, 9, 15, 30)
+    # Record failed attempt earlier
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=daily_job.id,
+            timestamp=datetime(2026, 11, 9, 9, 0, 1),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.FAILED,
+        )
+    )
+    next_run = calculate_next_job_run(daily_job, now, storage)
+    # Next minute boundary: 09:16:02
+    assert next_run == datetime(2026, 11, 9, 9, 16, 2)
+
+
+def test_calculate_next_job_run_weekend_jump(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    storage.save_job(daily_job)
+    # Friday evening 20:00 (2026-11-13 is Friday)
+    now = datetime(2026, 11, 13, 20, 0, 0)
+    next_run = calculate_next_job_run(daily_job, now, storage)
+    # Next Monday 2026-11-16 09:00:02
+    assert next_run == datetime(2026, 11, 16, 9, 0, 2)
+
+
+def test_calculate_next_job_run_paused(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    daily_job.is_paused = True
+    storage.save_job(daily_job)
+    now = datetime(2026, 11, 9, 8, 0, 0)
+    next_run = calculate_next_job_run(daily_job, now, storage)
+    assert next_run is None
+
+
+def test_calculate_next_schedule_event(storage, daily_job):
+    from roostr.application.use_cases.daemon import calculate_next_schedule_event
+
+    storage.save_job(daily_job)
+    now = datetime(2026, 11, 9, 8, 0, 0)
+    next_event = calculate_next_schedule_event([daily_job], now, storage)
+    assert next_event == datetime(2026, 11, 9, 9, 0, 2)
+
+    # Empty list falls back to midnight rollover
+    next_empty = calculate_next_schedule_event([], now, storage)
+    assert next_empty == datetime(2026, 11, 10, 0, 0, 2)

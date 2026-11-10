@@ -893,7 +893,7 @@ async def test_job_displays_failed_status_when_last_execution_failed(storage, sa
 
 
 @pytest.mark.asyncio
-async def test_dashboard_auto_refreshes_status_periodically(storage, sample_job):
+async def test_dashboard_schedule_driven_refresh(storage, sample_job):
     from datetime import datetime
 
     from roostr.domain.enums import TriggerType
@@ -908,8 +908,10 @@ async def test_dashboard_auto_refreshes_status_periodically(storage, sample_job)
         dashboard = app.screen
         item = dashboard.query_one(JobListItem)
         assert "WAITING" in str(item.query_one(".job-card-badge").render())
+        # A single smart timer is scheduled for the next run (not continuous 2s interval)
+        assert dashboard._refresh_timer is not None
 
-        # Simulate background execution without any user interaction or keypress
+        # Simulate background execution occurring at scheduled time
         failed_record = ExecutionRecord(
             id=None,
             job_id=sample_job.id,
@@ -920,11 +922,14 @@ async def test_dashboard_auto_refreshes_status_periodically(storage, sample_job)
         )
         storage.record_execution(failed_record)
 
-        # Let the 2-second interval timer fire automatically
-        await pilot.pause(2.2)
+        # Trigger scheduled refresh execution
+        dashboard._on_scheduled_refresh()
+        await pilot.pause()
 
         # The badge and inspector must have updated automatically
         badge_text = str(item.query_one(".job-card-badge").render())
         assert "FAILED" in badge_text
         inspector_text = str(dashboard.query_one("#inspector-details").render())
         assert "FAILED" in inspector_text
+        # And a new timer is scheduled for the next event
+        assert dashboard._refresh_timer is not None

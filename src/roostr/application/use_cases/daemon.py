@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import signal
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from roostr.application.ports import JobRepositoryPort
@@ -123,3 +123,112 @@ class DaemonSchedulerUseCase:
             loop.run_until_complete(self.run_forever_async(poll_interval_seconds))
         finally:
             loop.close()
+
+
+def calculate_next_job_run(job: Job, now: datetime, storage: JobRepositoryPort) -> datetime | None:
+    if job.is_paused:
+        return None
+
+    sched = job.schedule
+    if not sched.days_of_week:
+        return None
+
+    if sched.frequency == ScheduleFrequency.DAILY:
+        times = sorted(sched.times_of_day)
+        # 1. Check today if active
+        if sched.is_active_on_weekday(now.weekday()):
+            for t in times:
+                if len(times) <= 1:
+                    already_ran = storage.has_succeeded_on_date(job.id, now.date())
+                else:
+                    recent = storage.get_recent_executions(job.id, limit=20)
+                    already_ran = any(
+                        rec.status == ExecutionStatus.SUCCESS
+                        and rec.timestamp.date() == now.date()
+                        and sched.is_time_within_slot_window(t, rec.timestamp)
+                        for rec in recent
+                    )
+                if already_ran:
+                    continue
+
+                # Not succeeded yet: is now within tolerance window?
+                if sched.is_time_within_slot_window(t, now):
+                    sec_to_next = 60 - now.second
+                    if sec_to_next <= 0:
+                        sec_to_next = 60
+                    return now + timedelta(seconds=sec_to_next + 2)
+
+                slot_dt = datetime.combine(now.date(), t)
+                if now.time() < t:
+                    return slot_dt + timedelta(seconds=2)
+
+        # 2. Today has no remaining slots or is not an active day; find next active weekday
+        for offset in range(1, 8):
+            next_day = (now.weekday() + offset) % 7
+            if sched.is_active_on_weekday(next_day):
+                target_date = now.date() + timedelta(days=offset)
+                return datetime.combine(target_date, times[0]) + timedelta(seconds=2)
+
+        return None
+
+    # Interval frequency
+    step_seconds = (
+        sched.interval_value * 60
+        if sched.frequency == ScheduleFrequency.INTERVAL_MINUTES
+        else sched.interval_value * 3600
+    )
+    last_exec = storage.get_last_execution(job.id)
+    if last_exec and last_exec.status == ExecutionStatus.SUCCESS:
+        candidate = last_exec.timestamp + timedelta(seconds=step_seconds)
+    else:
+        candidate = now
+
+    if candidate < now:
+        candidate = now
+
+    # Ensure candidate is on an active day
+    for offset in range(0, 8):
+        day_candidate = (candidate.weekday() + offset) % 7
+        if sched.is_active_on_weekday(day_candidate):
+            if offset > 0:
+                candidate = datetime.combine(
+                    candidate.date() + timedelta(days=offset),
+                    sched.start_time or time(0, 0),
+                )
+            break
+
+    if sched.start_time and candidate.time() < sched.start_time:
+        candidate = datetime.combine(candidate.date(), sched.start_time)
+    elif sched.end_time and candidate.time() > sched.end_time:
+        for offset in range(1, 8):
+            next_day = (candidate.weekday() + offset) % 7
+            if sched.is_active_on_weekday(next_day):
+                candidate = datetime.combine(
+                    candidate.date() + timedelta(days=offset),
+                    sched.start_time or time(0, 0),
+                )
+                break
+
+    if candidate <= now:
+        sec_to_next = 60 - now.second
+        if sec_to_next <= 0:
+            sec_to_next = 60
+        return now + timedelta(seconds=sec_to_next + 2)
+
+    return candidate + timedelta(seconds=2)
+
+
+def calculate_next_schedule_event(
+    jobs: list[Job],
+    now: datetime,
+    storage: JobRepositoryPort,
+) -> datetime:
+    midnight = datetime.combine(now.date() + timedelta(days=1), time(0, 0, 2))
+    candidates: list[datetime] = [midnight]
+
+    for job in jobs:
+        next_run = calculate_next_job_run(job, now, storage)
+        if next_run and next_run > now:
+            candidates.append(next_run)
+
+    return min(candidates)

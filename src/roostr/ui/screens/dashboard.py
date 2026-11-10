@@ -8,9 +8,11 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 
 from roostr.application.ports import JobRepositoryPort
+from roostr.application.use_cases.daemon import calculate_next_schedule_event
 from roostr.domain.enums import AIHarness, ExecutionStatus, ScheduleFrequency, TriggerType
 from roostr.domain.models import (
     HARNESS_INFO,
@@ -588,6 +590,7 @@ class DashboardScreen(Screen):
         self.selected_job: Job | None = None
         self.collapsed_folders: set[str] = set()
         self.collapsed_subfolders: set[str] = set()
+        self._refresh_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-content"):
@@ -604,7 +607,25 @@ class DashboardScreen(Screen):
 
     def on_mount(self) -> None:
         self.refresh_jobs()
-        self.set_interval(2.0, self.auto_refresh_status)
+
+    def schedule_next_refresh(self) -> None:
+        if self._refresh_timer:
+            try:
+                self._refresh_timer.stop()
+            except Exception:
+                pass
+            self._refresh_timer = None
+
+        now = datetime.now()
+        jobs = self.storage.list_jobs()
+        next_event = calculate_next_schedule_event(jobs, now, self.storage)
+        delay = max(0.5, (next_event - now).total_seconds())
+        self._refresh_timer = self.set_timer(delay, self._on_scheduled_refresh)
+
+    def _on_scheduled_refresh(self) -> None:
+        self._refresh_timer = None
+        self.auto_refresh_status()
+        self.schedule_next_refresh()
 
     def auto_refresh_status(self) -> None:
         today = date.today()
@@ -772,6 +793,8 @@ class DashboardScreen(Screen):
             inspector_details.update(f"[dim]{self.msg.empty_state_text}[/]")
             history_container = self.query_one("#inspector-history", Vertical)
             history_container.remove_children()
+
+        self.schedule_next_refresh()
 
     @on(ListView.Selected, "#jobs-list")
     def on_item_selected(self, event: ListView.Selected) -> None:
