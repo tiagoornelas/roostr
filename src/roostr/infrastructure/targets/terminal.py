@@ -1,3 +1,4 @@
+import shlex
 import stat
 import subprocess
 from collections.abc import Callable
@@ -25,9 +26,10 @@ class TerminalTargetAdapter(ExecutionTargetPort):
         script_path = self.runners_dir / f"{job.id}.command"
         keep_open = isinstance(job.target, TerminalTargetConfig) and job.target.keep_open
         tail_clause = "exec zsh\n" if keep_open else ""
+        quoted_cwd = shlex.quote(str(job.cwd))
 
         script_content = f"""#!/bin/zsh -lic
-cd {job.cwd}
+cd {quoted_cwd}
 echo "=== [roostr] Starting {job.name} ==="
 {job.command}
 echo ""

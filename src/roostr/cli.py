@@ -3,6 +3,7 @@ from pathlib import Path
 
 import click
 
+from roostr import __version__
 from roostr.application.use_cases.execute_job import ExecuteJobUseCase
 from roostr.domain.enums import ExecutionStatus
 from roostr.infrastructure.storage import SQLiteStorage
@@ -17,6 +18,7 @@ def get_default_storage() -> SQLiteStorage:
 
 
 @click.group(invoke_without_command=True)
+@click.version_option(version=__version__, package_name="roostr", message="roostr %(version)s")
 @click.option(
     "--locale",
     "-l",
@@ -46,6 +48,7 @@ def main(ctx: click.Context, locale: str | None, theme: str | None, db: Path | N
     ctx.obj["theme"] = theme
 
     if ctx.invoked_subcommand is None:
+        from roostr.infrastructure.launchd import LaunchdServiceAdapter
         from roostr.ui.app import RoostrApp
 
         storage = SQLiteStorage(db) if db else get_default_storage()
@@ -53,7 +56,13 @@ def main(ctx: click.Context, locale: str | None, theme: str | None, db: Path | N
         saved_theme = storage.get_setting("theme", "night")
         effective_locale = locale or saved_locale or "en"
         effective_theme = theme or saved_theme or "night"
-        app = RoostrApp(storage=storage, locale=effective_locale, theme=effective_theme)
+        daemon_svc = LaunchdServiceAdapter()
+        app = RoostrApp(
+            storage=storage,
+            locale=effective_locale,
+            theme=effective_theme,
+            daemon_service=daemon_svc,
+        )
         app.run()
 
 

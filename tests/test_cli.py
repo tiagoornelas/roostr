@@ -15,6 +15,13 @@ def test_cli_help():
     assert "--theme" in result.output
 
 
+def test_cli_version():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--version"])
+    assert result.exit_code == 0
+    assert "roostr 0.1.0" in result.output
+
+
 def test_cli_run_help():
     runner = CliRunner()
     result = runner.invoke(main, ["run", "--help"])

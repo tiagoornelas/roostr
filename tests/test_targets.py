@@ -382,3 +382,34 @@ def test_background_target_exception_handling(background_job, tmp_path):
     success, msg = adapter.launch(background_job, datetime(2026, 11, 9, 9, 0))
     assert success is False
     assert "Failed to dispatch background process" in msg
+
+
+def test_targets_handle_cwd_with_spaces(tmp_path):
+    spaced_cwd = tmp_path / "path with spaces and $pecials"
+    job = Job(
+        id="spaced-job",
+        name="Spaced Job",
+        cwd=str(spaced_cwd),
+        command="echo hello",
+        schedule=SchedulePolicy((0,), time(9, 0)),
+        target=TerminalTargetConfig(app=TerminalApp.TERMINAL),
+    )
+
+    # 1. Terminal script quotes cwd
+    runner_dir = tmp_path / "runners"
+    cmd_runner = MagicMock()
+    cmd_runner.return_value.returncode = 0
+    term_adapter = TerminalTargetAdapter(runners_dir=runner_dir, cmd_runner=cmd_runner)
+    script_path = term_adapter.generate_runner_script(job)
+    content = script_path.read_text()
+    assert "cd 'path with spaces and $pecials'" in content or f"cd '{spaced_cwd}'" in content
+
+    # 2. Background popen quotes cwd
+    popen_mock = MagicMock()
+    popen_mock.return_value.pid = 9999
+    bg_adapter = BackgroundTargetAdapter(logs_dir=tmp_path / "logs", popen_fn=popen_mock)
+    success, msg = bg_adapter.launch(job, datetime(2026, 11, 9, 9, 0))
+    assert success is True
+    call_args = popen_mock.call_args[0][0]
+    zsh_cmd = call_args[2]
+    assert f"cd '{spaced_cwd}' && echo hello" in zsh_cmd

@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 from collections.abc import Callable
 from datetime import datetime
@@ -21,7 +22,8 @@ class BackgroundTargetAdapter(ExecutionTargetPort):
 
     def launch(self, job: Job, dt: datetime) -> tuple[bool, str]:
         log_file = self.logs_dir / f"{job.id}-{dt.strftime('%Y%m%d')}.log"
-        cmd = f"cd {job.cwd} && {job.command}"
+        quoted_cwd = shlex.quote(str(job.cwd))
+        cmd = f"cd {quoted_cwd} && {job.command}"
 
         try:
             with open(log_file, "a", encoding="utf-8") as f:
