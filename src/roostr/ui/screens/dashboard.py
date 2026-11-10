@@ -11,7 +11,7 @@ from textual.screen import Screen
 from textual.timer import Timer
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 
-from roostr.application.ports import JobRepositoryPort
+from roostr.application.ports import DaemonServicePort, JobRepositoryPort
 from roostr.application.use_cases.daemon import calculate_next_schedule_event
 from roostr.domain.enums import AIHarness, ExecutionStatus, ScheduleFrequency, TriggerType
 from roostr.domain.models import (
@@ -575,6 +575,12 @@ class DashboardScreen(Screen):
         background: transparent;
     }
 
+    #footer-status {
+        width: auto;
+        padding: 0 1;
+        background: transparent;
+    }
+
     #bottom-bar Footer {
         width: 1fr;
         dock: none;
@@ -582,15 +588,33 @@ class DashboardScreen(Screen):
     }
     """
 
-    def __init__(self, storage: JobRepositoryPort, messages: Messages, theme_name: str = "night"):
+    def __init__(
+        self,
+        storage: JobRepositoryPort,
+        messages: Messages,
+        theme_name: str = "night",
+        daemon_service: DaemonServicePort | None = None,
+    ):
         super().__init__()
         self.storage = storage
         self.msg = messages
         self.active_theme = theme_name
+        self.daemon_service = daemon_service
         self.selected_job: Job | None = None
         self.collapsed_folders: set[str] = set()
         self.collapsed_subfolders: set[str] = set()
         self._refresh_timer: Timer | None = None
+
+    def get_daemon_status_markup(self) -> str:
+        is_active = False
+        if self.daemon_service:
+            try:
+                is_active = self.daemon_service.is_running()
+            except Exception:
+                is_active = False
+        if is_active:
+            return f"[bold green]●[/] [green]{self.msg.status_active}[/]"
+        return f"[dim]○ {self.msg.status_inactive}[/]"
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-content"):
@@ -603,6 +627,7 @@ class DashboardScreen(Screen):
 
         with Horizontal(id="bottom-bar"):
             yield Label("🐓 roostr", id="footer-brand")
+            yield Label(self.get_daemon_status_markup(), id="footer-status")
             yield Footer()
 
     def on_mount(self) -> None:
@@ -660,6 +685,12 @@ class DashboardScreen(Screen):
             fresh_selected = jobs_by_id.get(self.selected_job.id, self.selected_job)
             self.show_job_details(fresh_selected)
 
+        # 4. Refresh footer daemon status
+        try:
+            self.query_one("#footer-status", Label).update(self.get_daemon_status_markup())
+        except Exception:
+            pass
+
     def get_current_focused_item(self) -> ListItem | None:
         jobs_list = self.query_one("#jobs-list", ListView)
         if jobs_list.index is not None and 0 <= jobs_list.index < len(jobs_list.children):
@@ -675,6 +706,10 @@ class DashboardScreen(Screen):
 
     def update_messages(self, messages: Messages) -> None:
         self.msg = messages
+        try:
+            self.query_one("#footer-status", Label).update(self.get_daemon_status_markup())
+        except Exception:
+            pass
         self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
         focused = self.get_current_focused_item()
         if isinstance(focused, FolderHeaderItem):

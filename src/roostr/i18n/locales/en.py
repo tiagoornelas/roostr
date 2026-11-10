@@ -51,6 +51,8 @@ EN_MESSAGES = Messages(
     status_paused="⏸ PAUSED",
     status_skipped="SKIPPED",
     status_error="❌ FAILED",
+    status_active="Active",
+    status_inactive="Inactive",
     # Schedule & Tolerance display
     days_weekdays_short="Mon–Fri",
     days_everyday_short="Daily",

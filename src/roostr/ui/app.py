@@ -1,10 +1,11 @@
 import dataclasses
+import sys
 
 from textual import work
 from textual.app import App
 from textual.binding import Binding
 
-from roostr.application.ports import JobRepositoryPort
+from roostr.application.ports import DaemonServicePort, JobRepositoryPort
 from roostr.application.use_cases.execute_job import ExecuteJobUseCase
 from roostr.application.use_cases.manage_jobs import ManageJobsUseCase
 from roostr.domain.enums import ExecutionStatus
@@ -53,6 +54,7 @@ class RoostrApp(App):
         theme: str = DEFAULT_THEME,
         execute_use_case: ExecuteJobUseCase | None = None,
         manage_use_case: ManageJobsUseCase | None = None,
+        daemon_service: DaemonServicePort | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -82,10 +84,24 @@ class RoostrApp(App):
 
         self.execute_use_case = execute_use_case or ExecuteJobUseCase(storage=storage)
         self.manage_use_case = manage_use_case or ManageJobsUseCase(storage=storage)
+
+        if daemon_service is not None:
+            self.daemon_service = daemon_service
+        elif "pytest" not in sys.modules:
+            try:
+                from roostr.infrastructure.launchd import LaunchdServiceAdapter
+
+                self.daemon_service = LaunchdServiceAdapter()
+            except Exception:
+                self.daemon_service = None
+        else:
+            self.daemon_service = None
+
         self.dashboard_screen = DashboardScreen(
             storage=self.storage,
             messages=self.msg,
             theme_name=self.theme,
+            daemon_service=self.daemon_service,
         )
 
     def get_default_screen(self) -> DashboardScreen:

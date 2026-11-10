@@ -57,6 +57,8 @@ class Messages:
     status_paused: str
     status_skipped: str
     status_error: str
+    status_active: str
+    status_inactive: str
 
     # Schedule & Tolerance display
     days_weekdays_short: str

@@ -51,6 +51,8 @@ PT_BR_MESSAGES = Messages(
     status_paused="⏸ PAUSADO",
     status_skipped="PULOU",
     status_error="❌ FAILED",
+    status_active="Ativo",
+    status_inactive="Inativo",
     # Schedule & Tolerance display
     days_weekdays_short="Seg–Sex",
     days_everyday_short="Diário",

@@ -42,6 +42,22 @@ async def test_app_dashboard_mounts(storage, sample_job):
         footer_brand = dashboard.query_one("#footer-brand", Label)
         assert "🐓" in str(footer_brand.render())
         assert "roostr" in str(footer_brand.render())
+        footer_status = dashboard.query_one("#footer-status", Label)
+        assert "Inactive" in str(footer_status.render())
+
+
+@pytest.mark.asyncio
+async def test_app_dashboard_daemon_status_active(storage, sample_job):
+    storage.save_job(sample_job)
+    daemon_mock = MagicMock()
+    daemon_mock.is_running.return_value = True
+
+    app = RoostrApp(storage=storage, locale="pt_br", daemon_service=daemon_mock)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        footer_status = dashboard.query_one("#footer-status", Label)
+        assert "Ativo" in str(footer_status.render())
 
 
 @pytest.mark.asyncio
