@@ -890,3 +890,41 @@ async def test_job_displays_failed_status_when_last_execution_failed(storage, sa
         assert item.last_status == ExecutionStatus.SUCCESS
         badge_text = str(item.query_one(".job-card-badge").render())
         assert "RAN TODAY" in badge_text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_auto_refreshes_status_periodically(storage, sample_job):
+    from datetime import datetime
+
+    from roostr.domain.enums import TriggerType
+    from roostr.domain.models import ExecutionRecord
+    from roostr.ui.screens.dashboard import JobListItem
+
+    storage.save_job(sample_job)
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        item = dashboard.query_one(JobListItem)
+        assert "WAITING" in str(item.query_one(".job-card-badge").render())
+
+        # Simulate background execution without any user interaction or keypress
+        failed_record = ExecutionRecord(
+            id=None,
+            job_id=sample_job.id,
+            timestamp=datetime.now(),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.FAILED,
+            details="Error",
+        )
+        storage.record_execution(failed_record)
+
+        # Let the 2-second interval timer fire automatically
+        await pilot.pause(2.2)
+
+        # The badge and inspector must have updated automatically
+        badge_text = str(item.query_one(".job-card-badge").render())
+        assert "FAILED" in badge_text
+        inspector_text = str(dashboard.query_one("#inspector-details").render())
+        assert "FAILED" in inspector_text

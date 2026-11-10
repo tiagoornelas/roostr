@@ -46,7 +46,7 @@ class JobListItem(ListItem):
         elif indent >= 2:
             self.add_class("indent-2")
 
-    def compose(self) -> ComposeResult:
+    def _get_status_markups(self) -> tuple[str, str, str]:
         if self.job.is_paused:
             status_dot = "[dim]●[/]"
             badge_markup = f"[dim]{self.msg.status_paused}[/]"
@@ -63,6 +63,39 @@ class JobListItem(ListItem):
             status_dot = "[bold yellow]●[/]"
             badge_markup = f"[bold yellow]{self.msg.status_waiting}[/]"
             name_markup = f"[bold]{self.job.name}[/]"
+        return status_dot, badge_markup, name_markup
+
+    def update_status(
+        self,
+        ran_today: bool,
+        last_status: ExecutionStatus | None,
+        run_count: int,
+        is_paused: bool | None = None,
+    ) -> bool:
+        if (
+            self.ran_today == ran_today
+            and self.last_status == last_status
+            and self.run_count == run_count
+            and (is_paused is None or self.job.is_paused == is_paused)
+        ):
+            return False
+
+        if is_paused is not None:
+            self.job.is_paused = is_paused
+        self.ran_today = ran_today
+        self.last_status = last_status
+        self.run_count = run_count
+
+        status_dot, badge_markup, name_markup = self._get_status_markups()
+        try:
+            self.query_one(".job-card-name", Label).update(f"{status_dot} {name_markup}")
+            self.query_one(".job-card-badge", Label).update(badge_markup)
+        except Exception:
+            pass
+        return True
+
+    def compose(self) -> ComposeResult:
+        status_dot, badge_markup, name_markup = self._get_status_markups()
 
         if self.job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
             sched_str = self.msg.lbl_every_hours.format(val=self.job.schedule.interval_value)
@@ -571,6 +604,40 @@ class DashboardScreen(Screen):
 
     def on_mount(self) -> None:
         self.refresh_jobs()
+        self.set_interval(2.0, self.auto_refresh_status)
+
+    def auto_refresh_status(self) -> None:
+        today = date.today()
+        all_jobs = self.storage.list_jobs()
+        all_job_ids = [j.id for j in all_jobs]
+        jobs_by_id = {j.id: j for j in all_jobs}
+
+        current_item_jobs = list(self.query(JobListItem))
+        current_job_ids = [item.job.id for item in current_item_jobs]
+
+        # 1. If jobs list changed structurally (added/deleted externally), do full reload
+        if all_job_ids != current_job_ids:
+            self.refresh_jobs(selected_job_id=self.selected_job.id if self.selected_job else None)
+            return
+
+        # 2. Update status of existing items in place
+        selected_updated = False
+        for item in current_item_jobs:
+            fresh_job = jobs_by_id.get(item.job.id)
+            is_paused = fresh_job.is_paused if fresh_job else None
+            ran_today = self.storage.has_succeeded_on_date(item.job.id, today)
+            run_count = self.storage.count_executions(item.job.id)
+            last_exec = self.storage.get_last_execution(item.job.id)
+            last_status = last_exec.status if last_exec else None
+
+            changed = item.update_status(ran_today, last_status, run_count, is_paused=is_paused)
+            if changed and self.selected_job and self.selected_job.id == item.job.id:
+                selected_updated = True
+
+        # 3. If currently selected job had a status change, update inspector details as well
+        if selected_updated and self.selected_job:
+            fresh_selected = jobs_by_id.get(self.selected_job.id, self.selected_job)
+            self.show_job_details(fresh_selected)
 
     def get_current_focused_item(self) -> ListItem | None:
         jobs_list = self.query_one("#jobs-list", ListView)
@@ -729,6 +796,12 @@ class DashboardScreen(Screen):
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and isinstance(event.item, JobListItem):
+            today = date.today()
+            ran_today = self.storage.has_succeeded_on_date(event.item.job.id, today)
+            run_count = self.storage.count_executions(event.item.job.id)
+            last_exec = self.storage.get_last_execution(event.item.job.id)
+            last_status = last_exec.status if last_exec else None
+            event.item.update_status(ran_today, last_status, run_count)
             self.show_job_details(event.item.job)
         elif event.item and isinstance(event.item, FolderHeaderItem):
             self.show_folder_details(event.item.folder_name, event.item.count, is_subfolder=False)
