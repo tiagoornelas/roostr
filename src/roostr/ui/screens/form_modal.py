@@ -524,9 +524,8 @@ class JobFormModal(ModalScreen[Job | None]):
                         with Vertical(id="target-background-box", classes="target-box"):
                             yield Label(self.msg.lbl_bg_log, classes="field-label")
                             bg_log = (
-                                self.job.target.log_file
+                                getattr(self.job.target, "log_file", "")
                                 if isinstance(self.job and self.job.target, BackgroundTargetConfig)
-                                and self.job.target.log_file
                                 else ""
                             )
                             yield Input(
@@ -742,8 +741,7 @@ class JobFormModal(ModalScreen[Job | None]):
             tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "{job.name} {DD}/{MM}"
             target = HerdrTargetConfig(space=space, tab_template=tab_template)
         elif target_type == "background":
-            bg_log = self.query_one("#inp-bg-log", Input).value.strip() or None
-            target = BackgroundTargetConfig(log_file=bg_log)
+            target = BackgroundTargetConfig(notify_on_complete=True)
         else:
             target = TerminalTargetConfig()
 

@@ -1,5 +1,5 @@
 from datetime import datetime, time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -206,3 +206,179 @@ def test_register_herdr_program(tmp_path):
     data = json.loads(prog_file.read_text())
     assert "roostr" in data["programs"]
     assert data["programs"]["roostr"]["name"] == "Roostr"
+
+    # 3. Invalid JSON in programs.json resets to valid
+    prog_file.write_text("{ invalid json")
+    assert register_herdr_program(herdr_dir) is True
+
+    # 4. programs key is not a dict
+    prog_file.write_text(json.dumps({"programs": "invalid"}))
+    assert register_herdr_program(herdr_dir) is True
+
+    # 5. Permission / write exception
+    with patch("pathlib.Path.write_text", side_effect=OSError("Write failed")):
+        assert register_herdr_program(herdr_dir) is False
+
+
+def test_herdr_adapter_error_branches_and_tab_rename(herdr_job, tmp_path):
+    import json
+    from unittest.mock import patch
+
+    from roostr.infrastructure.targets.herdr import HerdrTargetAdapter
+
+    # 1. is_running exception
+    err_runner = MagicMock(side_effect=RuntimeError("hc offline"))
+    adapter = HerdrTargetAdapter(cmd_runner=err_runner)
+    assert adapter.is_running() is False
+
+    # 2. get_space_id empty stdout / returncode != 0 / json exception
+    mock_runner = MagicMock()
+    mock_runner.return_value.returncode = 1
+    mock_runner.return_value.stdout = ""
+    adapter2 = HerdrTargetAdapter(cmd_runner=mock_runner)
+    assert adapter2.get_space_id("Roostr") is None
+
+    mock_runner.return_value.returncode = 0
+    mock_runner.return_value.stdout = "not json"
+    assert adapter2.get_space_id("Roostr") is None
+
+    # 3. get_or_create_space_id fails space.new
+    mock_runner.return_value.returncode = 1
+    mock_runner.return_value.stdout = json.dumps({"spaces": []})
+    mock_runner.return_value.stderr = "Quota exceeded"
+    sp_id, err = adapter2.get_or_create_space_id("Roostr", "/tmp")
+    assert sp_id is None
+    assert "Quota exceeded" in err
+
+    # 4. get_or_create_space_id raises exception
+    err_runner2 = MagicMock(side_effect=RuntimeError("Space crash"))
+    adapter3 = HerdrTargetAdapter(cmd_runner=err_runner2)
+    sp_id, err = adapter3.get_or_create_space_id("Roostr", "/tmp")
+    assert sp_id is None
+    assert "Space crash" in err
+
+    # 5. launch with non-herdr target
+    from roostr.domain.models import TerminalTargetConfig
+
+    herdr_job.target = TerminalTargetConfig()
+    ok_runner = MagicMock()
+    ok_runner.return_value.returncode = 0
+    adapter4 = HerdrTargetAdapter(cmd_runner=ok_runner)
+    adapter4.is_running = MagicMock(return_value=True)
+    assert adapter4.launch(herdr_job, datetime.now()) == (False, "Job target is not configured for Herdr")
+
+    # 6. launch when get_or_create_space_id fails
+    from roostr.domain.models import HerdrTargetConfig
+
+    herdr_job.target = HerdrTargetConfig(space="Roostr")
+    adapter4.get_or_create_space_id = MagicMock(return_value=(None, "Space creation error"))
+    assert adapter4.launch(herdr_job, datetime.now()) == (False, "Space creation error")
+
+    # 7. launch when hc run fails
+    adapter4.get_or_create_space_id = MagicMock(return_value=("sp_123", None))
+    fail_hc_res = MagicMock(returncode=1, stderr="hc run failed")
+    adapter4._cmd_runner = MagicMock(return_value=fail_hc_res)
+    assert adapter4.launch(herdr_job, datetime.now()) == (False, "Failed to execute hc run: hc run failed")
+
+    # 8. launch when hc run raises
+    adapter4._cmd_runner = MagicMock(side_effect=RuntimeError("hc crashed"))
+    assert "Error spawning hc process" in adapter4.launch(herdr_job, datetime.now())[1]
+
+    # 9. launch with tab rename exception and find_tab_id error
+    def multi_runner(cmd, **kwargs):
+        res = MagicMock()
+        res.returncode = 0
+        if cmd == ["hc", "server", "status"]:
+            return res
+        if "space.select" in cmd or "tab.select" in cmd:
+            return res
+        if "tab.rename" in cmd:
+            raise RuntimeError("tab rename failed")
+        if cmd == ["herdr-app", "ls"]:
+            res.stdout = json.dumps(
+                {
+                    "spaces": [
+                        {
+                            "id": "sp_123",
+                            "name": "Roostr",
+                            "tabs": [{"id": "tab_456", "terminals": [{"name": "daily-report-20261109-080000"}]}],
+                        }
+                    ]
+                }
+            )
+            return res
+        return res
+
+    adapter5 = HerdrTargetAdapter(cmd_runner=multi_runner, sleep_fn=lambda _: None)
+    with patch(
+        "roostr.infrastructure.targets.herdr.make_herdr_terminal_name", return_value="daily-report-20261109-080000"
+    ):
+        ok, msg = adapter5.launch(herdr_job, datetime(2026, 11, 9, 8, 0))
+        assert ok is True
+        assert "tab_456" in msg
+
+    # 10. find_tab_id_for_terminal returns None when ls throws
+    throw_runner = MagicMock(side_effect=RuntimeError("ls error"))
+    adapter6 = HerdrTargetAdapter(cmd_runner=throw_runner, sleep_fn=lambda _: None)
+    assert adapter6._find_tab_id_for_terminal("term1", retries=1) is None
+
+
+def test_mac_notifier_adapter():
+    from roostr.infrastructure.notifier import MacNotifierAdapter
+
+    cmd_runner = MagicMock()
+    notifier = MacNotifierAdapter(cmd_runner=cmd_runner)
+    notifier.notify('Title "Quotes"', 'Message "Quotes"')
+    assert cmd_runner.call_count == 1
+    args = cmd_runner.call_args[0][0]
+    assert "osascript" in args
+    assert '\\"Quotes\\"' in args[2]
+
+    # Exception handling in notifier
+    error_runner = MagicMock(side_effect=RuntimeError("AppleScript error"))
+    notifier_err = MacNotifierAdapter(cmd_runner=error_runner)
+    # Must not raise
+    notifier_err.notify("T", "M")
+
+
+def test_terminal_target_iterm_ghostty_and_errors(terminal_job, tmp_path):
+    from roostr.domain.enums import TerminalApp
+
+    runner_dir = tmp_path / "runners"
+
+    # 1. iTerm2
+    terminal_job.target.app = TerminalApp.ITERM2
+    cmd_runner = MagicMock()
+    cmd_runner.return_value.returncode = 0
+    adapter = TerminalTargetAdapter(runners_dir=runner_dir, cmd_runner=cmd_runner)
+    success, msg = adapter.launch(terminal_job, datetime(2026, 11, 9, 9, 0))
+    assert success is True
+    assert "iTerm" in cmd_runner.call_args[0][0][2]
+
+    # 2. Ghostty
+    terminal_job.target.app = TerminalApp.GHOSTTY
+    cmd_runner.reset_mock()
+    success, msg = adapter.launch(terminal_job, datetime(2026, 11, 9, 9, 0))
+    assert success is True
+    assert "Ghostty" in cmd_runner.call_args[0][0][2]
+
+    # 3. Non-zero returncode error
+    cmd_runner.return_value.returncode = 1
+    cmd_runner.return_value.stderr = "Permission denied"
+    success, msg = adapter.launch(terminal_job, datetime(2026, 11, 9, 9, 0))
+    assert success is False
+    assert "Permission denied" in msg
+
+    # 4. Exception raised
+    cmd_runner.side_effect = RuntimeError("Subprocess exploded")
+    success, msg = adapter.launch(terminal_job, datetime(2026, 11, 9, 9, 0))
+    assert success is False
+    assert "Subprocess exploded" in msg
+
+
+def test_background_target_exception_handling(background_job, tmp_path):
+    error_popen = MagicMock(side_effect=OSError("Fork failed"))
+    adapter = BackgroundTargetAdapter(logs_dir=tmp_path / "logs", popen_fn=error_popen)
+    success, msg = adapter.launch(background_job, datetime(2026, 11, 9, 9, 0))
+    assert success is False
+    assert "Failed to dispatch background process" in msg

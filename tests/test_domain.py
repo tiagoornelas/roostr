@@ -260,3 +260,65 @@ def test_job_default_target_herdr():
     )
     assert isinstance(job.target, HerdrTargetConfig)
     assert job.target.space == "Roostr"
+
+
+def test_schedule_policy_window_hours_and_until_hour_edge_cases():
+    p_window = SchedulePolicy(
+        days_of_week=(0,),
+        time_of_day=time(9, 0),
+        tolerance_mode=ToleranceMode.WINDOW_HOURS,
+        tolerance_value=3,
+    )
+    # 09:00 to 12:00
+    assert p_window.is_within_window(datetime(2026, 11, 9, 9, 0)) is True
+    assert p_window.is_within_window(datetime(2026, 11, 9, 11, 59)) is True
+    assert p_window.is_within_window(datetime(2026, 11, 9, 12, 0)) is False
+
+    # until_hour where end_minutes <= start_minutes (e.g. start at 10:00, until 8:00 -> defaults to +60 min)
+    p_until = SchedulePolicy(
+        days_of_week=(0,),
+        time_of_day=time(10, 0),
+        tolerance_mode=ToleranceMode.UNTIL_HOUR,
+        tolerance_value=8,
+    )
+    assert p_until.is_within_window(datetime(2026, 11, 9, 10, 30)) is True
+    assert p_until.is_within_window(datetime(2026, 11, 9, 11, 1)) is False
+
+
+def test_job_positional_constructors_and_validations():
+    import pytest
+
+    from roostr.domain.models import CommandAction
+
+    sched = SchedulePolicy((0,), time(9, 0))
+    target = TerminalTargetConfig()
+
+    # Form 1: Job(id, name, cwd, command_str, schedule, target)
+    j1 = Job("j1", "J1", "/tmp", "echo 1", sched, target)
+    assert j1.command == "echo 1"
+
+    # Form 2: Job(id, name, cwd, schedule, target, action)
+    action = CommandAction("echo 2")
+    j2 = Job("j2", "J2", "/tmp", sched, target, action)
+    assert j2.command == "echo 2"
+
+    # Missing schedule
+    with pytest.raises(ValueError, match="Job requires a SchedulePolicy"):
+        Job("j3", "J3", "/tmp", command="echo 3", schedule=None)  # type: ignore
+
+    # Missing command and action
+    with pytest.raises(ValueError, match="Job requires either an action or a command"):
+        Job("j4", "J4", "/tmp", schedule=sched, target=target)
+
+    # resolve_herdr_tab_name with terminal target
+    assert j1.resolve_herdr_tab_name(datetime.now()) == "J1"
+
+    # resolve_herdr_tab_name with HerdrTargetConfig without template
+    herdr_job = Job("j_h", "JH", "/tmp", "echo 1", sched, HerdrTargetConfig(space="Roostr", tab_template=""))
+    assert "JH" in herdr_job.resolve_herdr_tab_name(datetime.now())
+
+
+def test_schedule_policy_unknown_tolerance_mode():
+    sched = SchedulePolicy((0,), time(9, 0))
+    sched.tolerance_mode = "unknown"  # type: ignore
+    assert sched.is_time_within_slot_window(time(9, 0), datetime(2026, 11, 9, 9, 0)) is False

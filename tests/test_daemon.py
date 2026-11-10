@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime, time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -318,3 +319,220 @@ def test_calculate_next_schedule_event(storage, daily_job):
     # Empty list falls back to midnight rollover
     next_empty = calculate_next_schedule_event([], now, storage)
     assert next_empty == datetime(2026, 11, 10, 0, 0, 2)
+
+
+@pytest.mark.asyncio
+async def test_daemon_run_forever_async(storage):
+    from unittest.mock import patch
+
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+
+    async def fake_sleep(seconds):
+        daemon._running = False
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        await daemon.run_forever_async(poll_interval_seconds=1)
+
+    assert daemon._running is False
+
+
+def test_daemon_run_forever_sync(storage):
+    from unittest.mock import AsyncMock, patch
+
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+    with patch.object(daemon, "run_forever_async", new_callable=AsyncMock) as mock_async:
+        daemon.run_forever(poll_interval_seconds=1)
+        assert mock_async.call_count == 1
+
+
+def test_is_job_due_interval_hours(storage):
+    job = Job(
+        id="interval-hours-job",
+        name="Interval Hours Job",
+        cwd="/tmp",
+        command="echo hours",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            frequency=ScheduleFrequency.INTERVAL_HOURS,
+            interval_value=2,
+        ),
+        target=TerminalTargetConfig(),
+    )
+    storage.save_job(job)
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+
+    # No executions yet -> due
+    now = datetime(2026, 11, 9, 10, 0)
+    assert daemon.is_job_due(job, now) is True
+
+    # Succeeded 30 min ago -> not due
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=job.id,
+            timestamp=datetime(2026, 11, 9, 9, 30),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+        )
+    )
+    assert daemon.is_job_due(job, now) is False
+
+    # Check 2 hours later (11:35) -> due (elapsed > 2h - 30s)
+    later = datetime(2026, 11, 9, 11, 35)
+    assert daemon.is_job_due(job, later) is True
+
+
+def test_calculate_next_job_run_interval_and_multi_slot(storage):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    # 1. Interval with start_time & end_time
+    job_interval = Job(
+        id="job-int-win",
+        name="Job Interval Window",
+        cwd="/tmp",
+        command="echo int",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            frequency=ScheduleFrequency.INTERVAL_HOURS,
+            interval_value=2,
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+        ),
+        target=TerminalTargetConfig(),
+    )
+    storage.save_job(job_interval)
+
+    # Before start_time (08:00) -> next run is at start_time 09:00:02
+    now_early = datetime(2026, 11, 9, 8, 0)
+    nr = calculate_next_job_run(job_interval, now_early, storage)
+    assert nr == datetime(2026, 11, 9, 9, 0, 2)
+
+    # After end_time (18:00) -> next run is next day at start_time 09:00:02
+    now_late = datetime(2026, 11, 9, 18, 0)
+    nr = calculate_next_job_run(job_interval, now_late, storage)
+    assert nr == datetime(2026, 11, 10, 9, 0, 2)
+
+    # 2. Multi-slot daily already ran morning slot
+    job_multi = Job(
+        id="job-multi",
+        name="Job Multi Slot",
+        cwd="/tmp",
+        command="echo multi",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4),
+            times_of_day=(time(8, 0), time(14, 0)),
+        ),
+        target=TerminalTargetConfig(),
+    )
+    storage.save_job(job_multi)
+    # Ran morning slot at 08:00
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=job_multi.id,
+            timestamp=datetime(2026, 11, 9, 8, 0, 1),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+        )
+    )
+    now_midday = datetime(2026, 11, 9, 10, 0)
+    nr_multi = calculate_next_job_run(job_multi, now_midday, storage)
+    assert nr_multi == datetime(2026, 11, 9, 14, 0, 2)
+
+
+def test_is_job_due_daily_multi_slot_outside_slots(storage):
+    job = Job(
+        id="job-multi-outside",
+        name="Job Multi Outside",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy(
+            days_of_week=(0,),
+            times_of_day=(time(8, 0), time(14, 0)),
+            tolerance_mode=ToleranceMode.EXACT,
+        ),
+        target=TerminalTargetConfig(),
+    )
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+    # Monday at 10:00 -> not in any slot window -> returns False
+    assert daemon.is_job_due(job, datetime(2026, 11, 9, 10, 0)) is False
+
+
+@pytest.mark.asyncio
+async def test_daemon_run_forever_async_error_and_cancelled(storage):
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+
+    # 1. tick raises exception -> logged and loop continues then cancels
+    calls = 0
+
+    def error_tick(*args):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("Tick explosion")
+
+    daemon.tick = error_tick
+
+    with patch("asyncio.sleep", side_effect=asyncio.CancelledError):
+        await daemon.run_forever_async(poll_interval_seconds=1)
+
+    assert calls == 1
+
+
+def test_daemon_run_forever_signal_handling(storage):
+    import signal
+
+    daemon = DaemonSchedulerUseCase(storage=storage, execute_job_use_case=MagicMock())
+    captured_handler = None
+
+    def fake_signal(sig, handler):
+        nonlocal captured_handler
+        if sig == signal.SIGINT:
+            captured_handler = handler
+
+    with patch("signal.signal", side_effect=fake_signal), patch.object(daemon, "run_forever_async"):
+        # run run_forever briefly
+        daemon._running = True
+        daemon.run_forever(poll_interval_seconds=1)
+        if captured_handler:
+            captured_handler()
+        assert daemon._running is False
+
+
+def test_calculate_next_job_run_edge_cases(storage):
+    from roostr.application.use_cases.daemon import calculate_next_job_run
+
+    job = Job(
+        id="edge-job",
+        name="Edge Job",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy(
+            days_of_week=(),
+            time_of_day=time(8, 0),
+        ),
+        target=TerminalTargetConfig(),
+    )
+    # Empty days_of_week -> None
+    assert calculate_next_job_run(job, datetime(2026, 11, 9, 8, 0), storage) is None
+
+    # Daily: now is within slot tolerance window, second=0
+    job.schedule = SchedulePolicy(
+        days_of_week=(0,),
+        time_of_day=time(8, 0),
+        tolerance_mode=ToleranceMode.UNTIL_HOUR,
+        tolerance_value=12,
+    )
+    now_in_window = datetime(2026, 11, 9, 8, 30, 0)
+    nr = calculate_next_job_run(job, now_in_window, storage)
+    assert nr is not None
+    assert nr.minute == 31
+
+    # Interval: candidate <= now, second=0
+    job.schedule = SchedulePolicy(
+        days_of_week=(0,),
+        frequency=ScheduleFrequency.INTERVAL_MINUTES,
+        interval_value=15,
+    )
+    nr_int = calculate_next_job_run(job, datetime(2026, 11, 9, 10, 0, 0), storage)
+    assert nr_int is not None
+    assert nr_int.minute == 1

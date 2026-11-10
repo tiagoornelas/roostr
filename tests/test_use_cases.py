@@ -217,3 +217,135 @@ def test_manage_jobs_update_job(storage, terminal_job):
     use_case.update_job(updated_job)
     assert scheduler_mock.pause.call_count == 1
     assert scheduler_mock.pause.call_args[0][0] == "review-pr"
+
+
+def test_execute_job_missing_job(storage):
+    use_case = ExecuteJobUseCase(storage=storage)
+    status, msg = use_case.execute("non-existent")
+    assert status == ExecutionStatus.FAILED
+    assert "not found" in msg
+
+
+def test_execute_job_paused_not_forced(storage, terminal_job):
+    terminal_job.is_paused = True
+    storage.save_job(terminal_job)
+    use_case = ExecuteJobUseCase(storage=storage)
+    status, msg = use_case.execute(terminal_job.id, force=False)
+    assert status == ExecutionStatus.SKIPPED_ALREADY_RAN
+    assert "paused" in msg
+
+
+def test_execute_job_interval_skips_when_ran_recently(storage):
+    from roostr.domain.enums import ScheduleFrequency
+
+    interval_job = Job(
+        id="interval-skip",
+        name="Interval Skip",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+            frequency=ScheduleFrequency.INTERVAL_MINUTES,
+            interval_value=30,
+        ),
+        target=TerminalTargetConfig(),
+    )
+    storage.save_job(interval_job)
+    now = datetime(2026, 11, 9, 10, 0)
+    # Recorded execution 5 minutes ago
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=interval_job.id,
+            timestamp=datetime(2026, 11, 9, 9, 55),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+        )
+    )
+
+    use_case = ExecuteJobUseCase(storage=storage)
+    status, msg = use_case.execute(interval_job.id, now=now)
+    assert status == ExecutionStatus.SKIPPED_ALREADY_RAN
+    assert "Already ran recently" in msg
+
+
+def test_execute_job_background_notifier_on_failure(storage):
+    from roostr.domain.models import BackgroundTargetConfig
+
+    bg_job = Job(
+        id="bg-notify",
+        name="BG Notify",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy((0, 1, 2, 3, 4, 5, 6), time(9, 0)),
+        target=BackgroundTargetConfig(notify_on_complete=True),
+    )
+    storage.save_job(bg_job)
+    dispatcher_mock = MagicMock()
+    dispatcher_mock.dispatch.return_value = (False, "Command exited with 1")
+    notifier_mock = MagicMock()
+
+    use_case = ExecuteJobUseCase(storage=storage, dispatcher=dispatcher_mock, notifier=notifier_mock)
+    status, msg = use_case.execute(bg_job.id, now=datetime(2026, 11, 9, 9, 0))
+    assert status == ExecutionStatus.FAILED
+    assert notifier_mock.notify.call_count == 1
+    assert "Roostr — BG Notify" in notifier_mock.notify.call_args[1]["title"] or "Roostr — BG Notify" in str(
+        notifier_mock.notify.call_args
+    )
+
+
+def test_manage_jobs_toggle_pause_nonexistent_and_delete_folder(storage):
+    use_case = ManageJobsUseCase(storage=storage)
+    # Nonexistent job toggle_pause returns False
+    assert use_case.toggle_pause("nonexistent") is False
+
+    # Folder operations
+    use_case.create_folder("TestFolder")
+    assert "TestFolder" in use_case.list_folders()
+    use_case.delete_folder("TestFolder")
+    assert "TestFolder" not in use_case.list_folders()
+
+
+def test_execute_job_outside_window_skips(storage, terminal_job):
+    # Active day Monday, time 09:00, exact tolerance
+    terminal_job.schedule = SchedulePolicy((0,), time(9, 0), tolerance_mode=ToleranceMode.EXACT)
+    storage.save_job(terminal_job)
+    use_case = ExecuteJobUseCase(storage=storage)
+    # Executed Monday at 11:00 -> outside window
+    status, msg = use_case.execute(terminal_job.id, now=datetime(2026, 11, 9, 11, 0))
+    assert status == ExecutionStatus.SKIPPED_OUTSIDE_WINDOW
+    assert "Outside of scheduled window" in msg
+
+
+def test_execute_job_interval_hours_skips_when_ran_recently(storage):
+    from roostr.domain.enums import ScheduleFrequency
+
+    interval_job = Job(
+        id="interval-hours-skip",
+        name="Interval Hours Skip",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy(
+            days_of_week=(0, 1, 2, 3, 4, 5, 6),
+            frequency=ScheduleFrequency.INTERVAL_HOURS,
+            interval_value=2,
+        ),
+        target=TerminalTargetConfig(),
+    )
+    storage.save_job(interval_job)
+    now = datetime(2026, 11, 9, 10, 0)
+    # Ran 30 minutes ago
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id=interval_job.id,
+            timestamp=datetime(2026, 11, 9, 9, 30),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+        )
+    )
+
+    use_case = ExecuteJobUseCase(storage=storage)
+    status, msg = use_case.execute(interval_job.id, now=now)
+    assert status == ExecutionStatus.SKIPPED_ALREADY_RAN
+    assert "Already ran recently" in msg

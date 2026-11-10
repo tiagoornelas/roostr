@@ -265,3 +265,72 @@ def test_storage_save_and_retrieve_interval_window(storage):
     assert fetched is not None
     assert fetched.schedule.start_time == time(8, 30)
     assert fetched.schedule.end_time == time(17, 30)
+
+
+def test_storage_folder_validations_and_errors(storage):
+    # Empty folder
+    with pytest.raises(ValueError, match="Folder name cannot be empty"):
+        storage.save_folder("   ")
+
+    # Exceeding 2 levels
+    with pytest.raises(ValueError, match="cannot exceed 2 levels"):
+        storage.save_folder("Level1/Level2/Level3")
+
+    # Deleting folder that contains jobs
+    job = Job(
+        id="job-in-folder",
+        name="Job in folder",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy((0,), time(9, 0)),
+        folder="NotEmpty",
+    )
+    storage.save_job(job)
+    with pytest.raises(ValueError, match="contains 1 job"):
+        storage.delete_folder("NotEmpty")
+
+
+def test_storage_schema_migration_from_legacy_db(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                cwd TEXT NOT NULL DEFAULT '',
+                command TEXT NOT NULL,
+                days_of_week TEXT NOT NULL DEFAULT '[0,1,2,3,4]',
+                time_of_day TEXT NOT NULL DEFAULT '08:00',
+                tolerance_mode TEXT NOT NULL DEFAULT 'exact',
+                tolerance_value INTEGER NOT NULL DEFAULT 0,
+                target_type TEXT NOT NULL DEFAULT 'terminal',
+                target_config TEXT NOT NULL DEFAULT '{}',
+                is_paused INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT '2026-11-09T10:00:00',
+                updated_at TEXT NOT NULL DEFAULT '2026-11-09T10:00:00'
+            )
+            """
+        )
+        conn.execute("INSERT INTO jobs (id, name, command) VALUES ('old-job', 'Old Job', 'echo legacy')")
+
+    # Initializing SQLiteStorage triggers migrations for all 8 missing columns
+    repo = SQLiteStorage(db_path)
+    job = repo.get_job("old-job")
+    assert job is not None
+    assert job.command == "echo legacy"
+
+
+def test_storage_target_dict_fallback(storage):
+    from unittest.mock import patch
+
+    # Dummy object that is not Terminal, Herdr, or Background target config
+    dummy = "not-a-target"
+    assert storage._target_to_dict(dummy) == {}
+
+    # Unknown target type fallback to default
+    with patch("roostr.infrastructure.storage.TargetType", return_value="other"):
+        fallback = storage._dict_to_target("other", {})
+        assert isinstance(fallback, TerminalTargetConfig)
