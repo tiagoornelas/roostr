@@ -56,10 +56,15 @@ class NewFolderModal(ModalScreen[str | None]):
         margin-left: 2;
     }
 
-    Button.-primary {
+    Button.-primary, Button.-style-default.-primary {
         background: $primary;
-        color: $background;
+        color: $background !important;
         text-style: bold;
+    }
+
+    Button#btn-cancel, Button.-style-default#btn-cancel {
+        background: $panel;
+        color: $foreground !important;
     }
     """
 

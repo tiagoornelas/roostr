@@ -151,16 +151,30 @@ async def test_app_switch_theme(storage, sample_job):
 
 @pytest.mark.asyncio
 async def test_app_open_settings(storage, sample_job):
+    import re
+
     from roostr.ui.screens.settings_modal import SettingsModal
 
     storage.save_job(sample_job)
-    app = RoostrApp(storage=storage, locale="en", theme="night")
+    app = RoostrApp(storage=storage, locale="pt_br", theme="night")
 
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         await pilot.press("s")
         await pilot.pause()
         assert isinstance(app.screen, SettingsModal)
+
+        modal = app.screen
+        btn_save = modal.query_one("#btn-save")
+        btn_cancel = modal.query_one("#btn-cancel")
+        assert btn_save.visible
+        assert btn_cancel.visible
+
+        svg = pilot.app.export_screenshot()
+        text = re.sub(r"<[^>]+>", "", svg)
+        assert "Salvar" in text
+        assert "Fechar" in text
+
         await pilot.press("escape")
         await pilot.pause()
 
@@ -731,3 +745,37 @@ async def test_app_action_edit_no_selection(storage):
         await pilot.pause()
         # Should not open modal
         assert not isinstance(app.screen, JobFormModal)
+
+
+@pytest.mark.asyncio
+async def test_form_modal_weekday_checkbox_focus_no_occlusion(storage):
+    import re
+
+    from textual.widgets import TabbedContent
+
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    app = RoostrApp(storage=storage, locale="pt_br")
+
+    async with app.run_test(size=(100, 45)) as pilot:
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, JobFormModal)
+
+        tabs = modal.query_one("#form-tabs", TabbedContent)
+        tabs.active = "tab-schedule"
+        await pilot.pause()
+
+        chk0 = modal.query_one("#chk-day-0")
+        chk0.focus()
+        await pilot.pause()
+
+        # Checkbox border must not be tall border which creates a hollow occlusion square
+        assert chk0.styles.border_top[0] != "tall"
+
+        svg = pilot.app.export_screenshot()
+        text = re.sub(r"<[^>]+>", "", svg)
+        # Weekday label must remain visible on screen
+        assert "Seg" in text

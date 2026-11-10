@@ -95,7 +95,7 @@ class JobFormModal(ModalScreen[Job | None]):
     }
 
     #form-tabs {
-        height: auto;
+        height: 1fr;
         max-height: 72vh;
         margin-top: 0;
     }
@@ -154,6 +154,25 @@ class JobFormModal(ModalScreen[Job | None]):
         background: transparent;
         border: none;
         height: 1;
+        padding: 0;
+    }
+
+    .day-checkbox:focus,
+    .day-checkbox:hover,
+    .day-checkbox.-active {
+        border: none;
+        background: transparent;
+    }
+
+    .day-checkbox:focus > .toggle--label {
+        background: transparent;
+        color: $primary;
+        text-style: bold;
+    }
+
+    .day-checkbox:blur:hover > .toggle--label {
+        background: transparent;
+        color: $foreground;
     }
 
     .freq-box, .tol-box, .target-box, .action-box {
@@ -195,10 +214,15 @@ class JobFormModal(ModalScreen[Job | None]):
         background: $panel;
     }
 
-    Button.-primary {
+    Button.-primary, Button.-style-default.-primary {
         background: $primary;
-        color: $background;
+        color: $background !important;
         text-style: bold;
+    }
+
+    Button#btn-cancel, Button.-style-default#btn-cancel {
+        background: $panel;
+        color: $foreground !important;
     }
 
     #error-label {

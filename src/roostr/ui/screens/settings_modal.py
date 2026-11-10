@@ -19,25 +19,28 @@ class SettingsModal(ModalScreen[dict | None]):
     #settings-dialog {
         width: 60;
         height: auto;
-        max-height: 85%;
+        max-height: 95%;
         background: $background;
         border: solid $panel;
-        padding: 1 2;
+        padding: 0 2;
+        overflow-y: auto;
     }
 
     #settings-title {
         text-style: bold;
         color: $foreground;
-        padding-bottom: 1;
+        padding-top: 1;
+        padding-bottom: 0;
         border-bottom: solid $panel;
-        margin-bottom: 1;
+        margin-bottom: 0;
         width: 100%;
         text-align: center;
     }
 
     .settings-body {
         height: auto;
-        margin-bottom: 1;
+        margin-top: 1;
+        margin-bottom: 0;
     }
 
     .settings-col {
@@ -65,11 +68,19 @@ class SettingsModal(ModalScreen[dict | None]):
         margin-bottom: 0;
     }
 
+    RadioButton:focus {
+        border: none;
+        background: transparent;
+    }
+
     .settings-actions {
-        height: 3;
+        height: auto;
+        min-height: 3;
         align: right middle;
         border-top: solid $panel;
         padding-top: 1;
+        padding-bottom: 1;
+        margin-top: 1;
     }
 
     Button {
@@ -84,10 +95,15 @@ class SettingsModal(ModalScreen[dict | None]):
         background: $panel;
     }
 
-    Button.-primary {
+    Button.-primary, Button.-style-default.-primary {
         background: $primary;
-        color: $background;
+        color: $background !important;
         text-style: bold;
+    }
+
+    Button#btn-cancel, Button.-style-default#btn-cancel {
+        background: $panel;
+        color: $foreground !important;
     }
     """
 
