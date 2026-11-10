@@ -25,13 +25,22 @@ from roostr.i18n.schema import Messages
 
 
 class JobListItem(ListItem):
-    def __init__(self, job: Job, ran_today: bool, run_count: int, msg: Messages, indent: int = 0):
+    def __init__(
+        self,
+        job: Job,
+        ran_today: bool,
+        run_count: int,
+        msg: Messages,
+        indent: int = 0,
+        last_status: ExecutionStatus | None = None,
+    ):
         super().__init__()
         self.job = job
         self.ran_today = ran_today
         self.run_count = run_count
         self.msg = msg
         self.indent = indent
+        self.last_status = last_status
         if indent == 1:
             self.add_class("indent-1")
         elif indent >= 2:
@@ -42,6 +51,10 @@ class JobListItem(ListItem):
             status_dot = "[dim]●[/]"
             badge_markup = f"[dim]{self.msg.status_paused}[/]"
             name_markup = f"[dim]{self.job.name}[/]"
+        elif self.last_status == ExecutionStatus.FAILED:
+            status_dot = "[bold red]●[/]"
+            badge_markup = f"[bold red]{self.msg.status_error}[/]"
+            name_markup = f"[bold]{self.job.name}[/]"
         elif self.ran_today:
             status_dot = "[bold green]●[/]"
             badge_markup = f"[bold green]{self.msg.status_running_today}[/]"
@@ -635,7 +648,9 @@ class DashboardScreen(Screen):
                 for job in data["direct"]:
                     ran_today = self.storage.has_succeeded_on_date(job.id, today)
                     run_count = self.storage.count_executions(job.id)
-                    item = JobListItem(job, ran_today, run_count, self.msg, indent=1)
+                    last_exec = self.storage.get_last_execution(job.id)
+                    last_status = last_exec.status if last_exec else None
+                    item = JobListItem(job, ran_today, run_count, self.msg, indent=1, last_status=last_status)
                     job_index_map[job.id] = len(items_to_add)
                     items_to_add.append(item)
 
@@ -650,7 +665,9 @@ class DashboardScreen(Screen):
                         for job in sf_jobs:
                             ran_today = self.storage.has_succeeded_on_date(job.id, today)
                             run_count = self.storage.count_executions(job.id)
-                            item = JobListItem(job, ran_today, run_count, self.msg, indent=2)
+                            last_exec = self.storage.get_last_execution(job.id)
+                            last_status = last_exec.status if last_exec else None
+                            item = JobListItem(job, ran_today, run_count, self.msg, indent=2, last_status=last_status)
                             job_index_map[job.id] = len(items_to_add)
                             items_to_add.append(item)
 
@@ -661,7 +678,9 @@ class DashboardScreen(Screen):
             for job in root_jobs:
                 ran_today = self.storage.has_succeeded_on_date(job.id, today)
                 run_count = self.storage.count_executions(job.id)
-                item = JobListItem(job, ran_today, run_count, self.msg, indent=0)
+                last_exec = self.storage.get_last_execution(job.id)
+                last_status = last_exec.status if last_exec else None
+                item = JobListItem(job, ran_today, run_count, self.msg, indent=0, last_status=last_status)
                 job_index_map[job.id] = len(items_to_add)
                 items_to_add.append(item)
 
@@ -742,9 +761,13 @@ class DashboardScreen(Screen):
         ran_today = self.storage.has_succeeded_on_date(job.id, today)
         total_runs = self.storage.count_executions(job.id)
         recent_records = self.storage.get_recent_executions(job.id, limit=5)
+        last_exec = self.storage.get_last_execution(job.id)
+        last_status = last_exec.status if last_exec else None
 
         if job.is_paused:
             status_text = f"[bold dim]{self.msg.status_paused}[/]"
+        elif last_status == ExecutionStatus.FAILED:
+            status_text = f"[bold red]{self.msg.status_error}[/]"
         elif ran_today:
             status_text = f"[bold green]{self.msg.status_running_today}[/]"
         else:

@@ -812,3 +812,81 @@ async def test_all_modals_buttons_are_compact_single_row(storage, sample_job):
             assert len(btns) >= 2, f"{name} expected at least 2 buttons"
             for b in btns:
                 assert b.region.height == 1, f"{name} button {b.id} height is {b.region.height}, expected 1"
+
+
+@pytest.mark.asyncio
+async def test_job_displays_failed_status_when_last_execution_failed(storage, sample_job):
+    from datetime import datetime
+
+    from roostr.domain.enums import TriggerType
+    from roostr.domain.models import ExecutionRecord
+    from roostr.ui.screens.dashboard import JobListItem
+
+    storage.save_job(sample_job)
+
+    # 1. Initially without execution: status should be WAITING
+    app = RoostrApp(storage=storage, locale="en")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        item = dashboard.query_one(JobListItem)
+        assert item.last_status is None
+        assert "WAITING" in str(item.query_one(".job-card-badge").render())
+
+    # 2. Add a failed execution record: status must transition to FAILED
+    failed_record = ExecutionRecord(
+        id=None,
+        job_id=sample_job.id,
+        timestamp=datetime.now(),
+        trigger_type=TriggerType.SCHEDULED,
+        status=ExecutionStatus.FAILED,
+        details="Spawn error: folder not found",
+    )
+    storage.record_execution(failed_record)
+
+    app = RoostrApp(storage=storage, locale="en")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        item = dashboard.query_one(JobListItem)
+        assert item.last_status == ExecutionStatus.FAILED
+        badge_text = str(item.query_one(".job-card-badge").render())
+        assert "FAILED" in badge_text
+        name_label = str(item.query_one(".job-card-name").render())
+        assert "●" in name_label
+
+        inspector_details = str(dashboard.query_one("#inspector-details").render())
+        assert "FAILED" in inspector_details
+
+    # 3. If job is paused, PAUSED takes precedence over FAILED
+    storage.set_paused(sample_job.id, True)
+    app = RoostrApp(storage=storage, locale="en")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        item = dashboard.query_one(JobListItem)
+        badge_text = str(item.query_one(".job-card-badge").render())
+        assert "PAUSED" in badge_text
+
+    # Unpause for next checks
+    storage.set_paused(sample_job.id, False)
+
+    # 4. If a newer execution succeeds, status transitions to RAN TODAY
+    success_record = ExecutionRecord(
+        id=None,
+        job_id=sample_job.id,
+        timestamp=datetime.now(),
+        trigger_type=TriggerType.MANUAL,
+        status=ExecutionStatus.SUCCESS,
+        details="Success",
+    )
+    storage.record_execution(success_record)
+
+    app = RoostrApp(storage=storage, locale="en")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        dashboard = app.screen
+        item = dashboard.query_one(JobListItem)
+        assert item.last_status == ExecutionStatus.SUCCESS
+        badge_text = str(item.query_one(".job-card-badge").render())
+        assert "RAN TODAY" in badge_text

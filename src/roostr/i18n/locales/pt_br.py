@@ -50,7 +50,7 @@ PT_BR_MESSAGES = Messages(
     status_waiting="⏳ AGUARDANDO",
     status_paused="⏸ PAUSADO",
     status_skipped="PULOU",
-    status_error="ERRO",
+    status_error="❌ FAILED",
     # Schedule & Tolerance display
     days_weekdays_short="Seg–Sex",
     days_everyday_short="Diário",

@@ -50,7 +50,7 @@ ES_MESSAGES = Messages(
     status_waiting="⏳ ESPERANDO",
     status_paused="⏸ PAUSADO",
     status_skipped="OMITIDO",
-    status_error="ERROR",
+    status_error="❌ FAILED",
     # Schedule & Tolerance display
     days_weekdays_short="Lun–Vie",
     days_everyday_short="Diario",

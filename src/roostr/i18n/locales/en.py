@@ -50,7 +50,7 @@ EN_MESSAGES = Messages(
     status_waiting="⏳ WAITING",
     status_paused="⏸ PAUSED",
     status_skipped="SKIPPED",
-    status_error="ERROR",
+    status_error="❌ FAILED",
     # Schedule & Tolerance display
     days_weekdays_short="Mon–Fri",
     days_everyday_short="Daily",
