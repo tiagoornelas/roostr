@@ -1,0 +1,44 @@
+name: "🤖 New AI CLI Harness Request"
+description: Propose support for a new AI CLI coding harness in Roostr
+title: "feat(harness): add support for <harness-name>"
+labels: ["enhancement", "harness"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Per `CONTRIBUTING.md`, please open this issue **before** authoring any code or opening a Pull Request.
+        Different AI CLI harnesses differ in multiline escaping, headless flags, and terminal interaction.
+  - type: input
+    id: harness_name
+    attributes:
+      label: Harness Name & Binary
+      description: e.g. "Aider (`aider`)", "Goose (`goose`)", "OpenCode (`opencode`)"
+      placeholder: "Aider (`aider`)"
+    validations:
+      required: true
+  - type: input
+    id: docs_url
+    attributes:
+      label: Official Documentation / Repository
+      placeholder: "https://github.com/..."
+    validations:
+      required: true
+  - type: textarea
+    id: cli_flags
+    attributes:
+      label: Non-interactive / Headless and Prompt Flags
+      description: How does this CLI accept prompts and run unattended?
+      placeholder: |
+        - Non-interactive execution flag: `--yes` / `--message "..."`
+        - Session resumption flag: `--restore <id>`
+        - Working directory flag: `--dir <path>`
+    validations:
+      required: true
+  - type: textarea
+    id: example_command
+    attributes:
+      label: Example Command Line
+      description: How would a scheduled command look when dispatched by Roostr?
+      placeholder: "aider --message 'Review outstanding PRs' --yes"
+    validations:
+      required: true

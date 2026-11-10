@@ -11,6 +11,11 @@
   <a href="https://textual.textualize.io/"><img src="https://img.shields.io/badge/TUI-Textual-00D4AA.svg?style=flat-square" alt="Textual TUI"></a>
   <a href="https://github.com/herdrdev/herdr"><img src="https://img.shields.io/badge/Herdr-Native_Target-F43F5E.svg?style=flat-square" alt="Herdr Integration"></a>
   <a href="#-supported-ai-harnesses"><img src="https://img.shields.io/badge/AI_Harnesses-Agnostic-F97316.svg?style=flat-square" alt="AI Agnostic"></a>
+  <a href="https://github.com/tiagoornelas/roostr/actions"><img src="https://img.shields.io/badge/CI-Passing-brightgreen.svg?style=flat-square" alt="CI Status"></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/roostr-dashboard-night.svg" alt="Roostr Dashboard" width="100%">
 </p>
 
 ---
@@ -24,7 +29,10 @@ Many of us just want to keep things **simple, local, and running straight inside
 - **Roostr 🐓** is the rooster that crows at dawn: waking up your autonomous coding routines right on schedule.
 - **Herdr 🐕** is the shepherd: herding active agents into organized workspace tabs where you can visually inspect them.
 
-No cloud lock-in, zero Celery/Redis bloat. Just your favorite AI tools waking up on time, doing the heavy lifting while you sleep, and catching up smoothly if your laptop took a nap.
+### Why not just traditional `cron` or raw `launchd`?
+- **Mac Sleep & Lid-Close Tolerance:** Standard `cron` fails silently if your MacBook is asleep at 08:30. Roostr's smart tolerance window catches up automatically the moment you open your laptop.
+- **Native macOS `launchd` without XML headaches:** Roostr registers directly with macOS `launchd` under the hood. No manual `.plist` editing, no root daemon requirements, and zero background Python processes eating CPU when idle.
+- **Visual Terminal Inspections:** Rather than sending output into `/dev/null` or forgotten log dumps, Roostr dispatches routines straight into [Herdr](https://github.com/herdrdev/herdr) agent tabs, interactive terminal windows, or desktop-notified background runs.
 
 ---
 
@@ -32,7 +40,7 @@ No cloud lock-in, zero Celery/Redis bloat. Just your favorite AI tools waking up
 
 - **Ridiculously Simple & Local-First:**
   - Installs as a single lightweight CLI tool (`roostr`).
-  - No cloud accounts, no subscriptions, zero external daemon requirements.
+  - Native macOS `launchd` integration — zero third-party background services or Docker daemons.
   - Powered by embedded SQLite (WAL mode) for rock-solid local persistence and idempotency.
 
 - **AI-Agnostic Software Factory Runner:**
@@ -47,7 +55,7 @@ No cloud lock-in, zero Celery/Redis bloat. Just your favorite AI tools waking up
 
 - **Multi-Target Execution:**
   - 🖥️ **Herdr App:** Default visual target. Spawns tasks in designated spaces with template-based tab names (e.g. `{job.name} {DD}/{MM}`), with 1-click tab jumping.
-  - 💻 **Terminal Emulators:** Launches new windows/tabs in Terminal.app, Ghostty, iTerm2, Kitty, or Alacritty with optional interactive shell retention (`keep_open`).
+  - 💻 **Terminal Emulators:** Launches new windows/tabs in Terminal.app, Ghostty, or iTerm2 with optional interactive shell retention (`keep_open`).
   - 👻 **Background Headless:** Headless process execution with stdout/stderr redirection to log files and desktop notifications.
 
 - **2-Level Folder Organization:**
@@ -65,35 +73,56 @@ No cloud lock-in, zero Celery/Redis bloat. Just your favorite AI tools waking up
 
 ### 1. Installation
 
-Requires Python `>= 3.13`. Using [uv](https://github.com/astral-sh/uv) is recommended:
+Requires macOS and Python `>= 3.13`. Using [uv](https://github.com/astral-sh/uv) or [pipx](https://github.com/pypa/pipx) is recommended:
 
 ```bash
-# Clone the repository
-git clone https://github.com/tiagoornelas/roostr.git
-cd roostr
+# With uv (recommended)
+uv tool install roostr
 
-# Install globally in your PATH
-uv tool install --editable .
+# Or with pipx
+pipx install roostr
+
+# Or directly from the GitHub repository
+uv tool install git+https://github.com/tiagoornelas/roostr.git
 ```
 
-Verify the installation:
+Verify your installation:
 
 ```bash
 roostr --version
 ```
 
-### 2. Launch the TUI
+### 2. Configure Your Routines (TUI)
 
-Simply run:
+Launch the dashboard to create and organize jobs:
 
 ```bash
 roostr
 ```
 
-Or start with a specific language / theme:
+- Press `n` to create your first routine (e.g. a morning PR review with Claude or Antigravity).
+- Press `r` to immediately test-run the selected job.
+- Press `q` to exit.
+
+### 3. Activate the Background Daemon
+
+To ensure your routines run automatically on schedule while your terminal is closed, install the native macOS `launchd` service:
 
 ```bash
-roostr --locale pt_br --theme morning
+roostr daemon install
+```
+
+Check service status at any time:
+
+```bash
+roostr daemon status
+# ● Roostr daemon is running (loaded in launchd).
+```
+
+To remove or disable the service:
+
+```bash
+roostr daemon uninstall
 ```
 
 ---
@@ -122,7 +151,7 @@ Designed for developers managing multi-agent spaces in [Herdr](https://github.co
 
 ### 2. Terminal Emulators (`terminal`)
 Ideal when you want dedicated windows or tabs for immediate terminal interaction.
-- **Supported:** Terminal.app, Ghostty, iTerm2, Kitty, Alacritty, or auto-detect.
+- **Supported:** Terminal.app, Ghostty, iTerm2, or auto-detect.
 - **Interactive shell retention:** Keeps the terminal session open after command execution (`keep_open: true`).
 
 ### 3. Background Headless (`background`)
