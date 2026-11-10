@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/roostr-dashboard-night.svg" alt="Roostr Dashboard" width="100%">
+  <img src="docs/assets/roostr-dashboard-tokyo-night.svg" alt="Roostr Dashboard (Tokyo Night Theme)" width="100%">
 </p>
 
 ---
