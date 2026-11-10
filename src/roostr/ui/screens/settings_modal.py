@@ -75,20 +75,22 @@ class SettingsModal(ModalScreen[dict | None]):
 
     .settings-actions {
         height: auto;
-        min-height: 3;
+        min-height: 1;
         align: right middle;
         border-top: solid $panel;
         padding-top: 1;
-        padding-bottom: 1;
+        padding-bottom: 0;
         margin-top: 1;
     }
 
     Button {
         background: $panel;
         color: $foreground;
-        border: none;
+        border: none !important;
+        height: 1;
         min-width: 14;
         margin-left: 1;
+        padding: 0 1;
     }
 
     Button:hover {
@@ -99,11 +101,15 @@ class SettingsModal(ModalScreen[dict | None]):
         background: $primary;
         color: $background !important;
         text-style: bold;
+        border: none !important;
+        height: 1;
     }
 
     Button#btn-cancel, Button.-style-default#btn-cancel {
         background: $panel;
         color: $foreground !important;
+        border: none !important;
+        height: 1;
     }
     """
 

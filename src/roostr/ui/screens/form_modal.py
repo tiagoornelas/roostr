@@ -199,15 +199,17 @@ class JobFormModal(ModalScreen[Job | None]):
     .button-row {
         margin-top: 1;
         align: right middle;
-        height: 3;
+        height: auto;
     }
 
     Button {
         background: $panel;
         color: $foreground;
-        border: none;
+        border: none !important;
+        height: 1;
         min-width: 14;
         margin-left: 2;
+        padding: 0 1;
     }
 
     Button:hover {
@@ -218,11 +220,15 @@ class JobFormModal(ModalScreen[Job | None]):
         background: $primary;
         color: $background !important;
         text-style: bold;
+        border: none !important;
+        height: 1;
     }
 
     Button#btn-cancel, Button.-style-default#btn-cancel {
         background: $panel;
         color: $foreground !important;
+        border: none !important;
+        height: 1;
     }
 
     #error-label {

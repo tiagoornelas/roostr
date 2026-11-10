@@ -769,6 +769,9 @@ async def test_form_modal_weekday_checkbox_focus_no_occlusion(storage):
         await pilot.pause()
 
         chk0 = modal.query_one("#chk-day-0")
+        scroll = chk0.query_ancestor("VerticalScroll")
+        scroll.scroll_to_widget(chk0, animate=False)
+        await pilot.pause()
         chk0.focus()
         await pilot.pause()
 
@@ -779,3 +782,33 @@ async def test_form_modal_weekday_checkbox_focus_no_occlusion(storage):
         text = re.sub(r"<[^>]+>", "", svg)
         # Weekday label must remain visible on screen
         assert "Seg" in text
+
+
+@pytest.mark.asyncio
+async def test_all_modals_buttons_are_compact_single_row(storage, sample_job):
+    from textual.app import App
+    from textual.widgets import Button
+
+    from roostr.i18n.catalog import get_messages
+    from roostr.ui.screens.folder_modal import NewFolderModal
+    from roostr.ui.screens.form_modal import JobFormModal
+    from roostr.ui.screens.move_modal import MoveJobModal
+    from roostr.ui.screens.settings_modal import SettingsModal
+
+    msgs = get_messages("en")
+    modals = [
+        ("SettingsModal", SettingsModal(current_theme="night", current_locale="en", messages=msgs)),
+        ("JobFormModal", JobFormModal(messages=msgs)),
+        ("NewFolderModal", NewFolderModal(messages=msgs)),
+        ("MoveJobModal", MoveJobModal(job=sample_job, folders=["Work"], messages=msgs)),
+    ]
+
+    for name, modal in modals:
+        app = App()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await app.push_screen(modal)
+            await pilot.pause()
+            btns = list(app.screen.query(Button))
+            assert len(btns) >= 2, f"{name} expected at least 2 buttons"
+            for b in btns:
+                assert b.region.height == 1, f"{name} button {b.id} height is {b.region.height}, expected 1"
