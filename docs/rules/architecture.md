@@ -27,8 +27,11 @@ infrastructure/ (SQLite, launchd) ────┘
 3. **`infrastructure/`**:
    - Implements ports defined in `application/ports.py`.
    - `storage.py`: Embedded SQLite storage with WAL journal mode.
+   - `platform.py`: Platform factory resolving OS-specific adapters based on `sys.platform`.
    - `launchd.py`: macOS launchd plist generation, load, and unload commands.
-   - `targets/`: Execution adapters for Herdr App, terminal emulators (Ghostty, iTerm2, Terminal.app), and background execution.
+   - `systemd.py`: Linux systemd user service generation, enable, start, and stop commands.
+   - `notifier.py`: macOS (`osascript`) and Linux (`notify-send`) desktop notification adapters.
+   - `targets/`: Execution adapters for Herdr App, macOS and Linux terminal emulators, and background execution.
 
 4. **`ui/` and `cli.py` (Presentation)**:
    - Consumer of `application/use_cases/`.

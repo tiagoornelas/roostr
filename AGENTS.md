@@ -4,7 +4,7 @@ This file provides global instructions and project context for all AI agents (Cl
 
 ## Project Overview
 
-Roostr is a local-first scheduled task runner and software factory alarm for local AI coding agents on macOS. It wakes up autonomous coding routines on schedule — dispatching morning PR audits, test suites, and refactorings directly into Herdr workspaces, dedicated terminal tabs, or silent background runs.
+Roostr is a local-first scheduled task runner and software factory alarm for local AI coding agents on macOS and Linux. It wakes up autonomous coding routines on schedule — dispatching morning PR audits, test suites, and refactorings directly into Herdr workspaces, dedicated terminal tabs, or silent background runs.
 
 Roostr exposes **two equal interfaces**:
 1. **Interactive TUI** (`roostr`): Textual dashboard for human visual management.
@@ -16,7 +16,7 @@ Roostr exposes **two equal interfaces**:
 - **TUI Framework:** Textual 8.x
 - **CLI Framework:** Click 8.x
 - **Persistence:** Embedded SQLite 3 (WAL journal mode)
-- **OS Integration:** Native macOS `launchd` User Agent (no root, no background Docker daemons)
+- **OS Integration:** Native macOS `launchd` User Agent and Linux `systemd --user` service (no root, no background Docker daemons)
 - **Package & Environment:** `uv`, `hatchling`
 - **Testing & Quality:** `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff`
 
@@ -27,7 +27,7 @@ uv run roostr                 # Launch the interactive Textual TUI
 uv run roostr --help          # Show top-level CLI commands and options
 uv run roostr job list        # List scheduled jobs (supports --json)
 uv run roostr run <job_id>    # Trigger immediate execution of a job
-uv run roostr daemon status   # Check status of the macOS launchd scheduler
+uv run roostr daemon status   # Check status of the background scheduler (launchd / systemd)
 
 uv run pytest                 # Run the automated test suite
 uv run pytest --cov=roostr    # Run tests with coverage report
@@ -41,7 +41,7 @@ Roostr is structured under Clean Architecture (Ports & Adapters):
 
 - `src/roostr/domain/`: Pure business models (`Job`, `Schedule`, `ExecutionRecord`) and enums (`AIHarness`, `TargetType`, `ScheduleFrequency`). Zero external framework dependencies.
 - `src/roostr/application/`: Abstract ports (`ports.py`) and use cases (`ExecuteJobUseCase`, `ManageJobsUseCase`, `DaemonSchedulerUseCase`).
-- `src/roostr/infrastructure/`: Concrete implementations of ports (`SQLiteStorage`, `LaunchdServiceAdapter`, and execution targets in `targets/`).
+- `src/roostr/infrastructure/`: Concrete implementations of ports (`SQLiteStorage`, `LaunchdServiceAdapter`, `SystemdUserServiceAdapter`, `PlatformFactory`, and execution targets in `targets/`).
 - `src/roostr/ui/`: Textual interactive TUI components, screens, modals, and reactive widgets.
 - `src/roostr/cli.py`: Click CLI group and subcommands.
 
