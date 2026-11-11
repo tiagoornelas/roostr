@@ -43,6 +43,11 @@ Many of us just want to keep things **simple, local, and running straight inside
   - Native macOS `launchd` integration — zero third-party background services or Docker daemons.
   - Powered by embedded SQLite (WAL mode) for rock-solid local persistence and idempotency.
 
+- **Dual First-Class Interfaces (TUI & CLI Parity):**
+  - **For Humans:** Interactive Textual dashboard (`roostr`) for visual job management, folder navigation, and 1-click execution.
+  - **For AI Agents:** Non-interactive Click CLI (`roostr help`, `roostr <cmd> --json`) allowing your AI coding harnesses to discover, configure, inspect, and run routines autonomously.
+
+
 - **AI-Agnostic Software Factory Runner:**
   - Preconfigured first-class support for **Claude Code** (`claude`), **Google Antigravity** (`agy`), **Cursor** (`cursor`), and **OpenAI Codex** (`codex`).
   - Supports multiline prompt authoring with markdown syntax highlighting directly in the TUI.
@@ -92,19 +97,72 @@ Verify your installation:
 roostr --version
 ```
 
-### 2. Configure Your Routines (TUI)
+### 2. For Humans: Interactive TUI Dashboard
 
-Launch the dashboard to create and organize jobs:
+Launch the visual dashboard for keyboard-driven job configuration, real-time inspection, and folder organization:
 
 ```bash
 roostr
 ```
 
-- Press `n` to create your first routine (e.g. a morning PR review with Claude or Antigravity).
+- Press `n` to create a new routine (e.g. a morning PR review with Claude or Antigravity).
 - Press `r` to immediately test-run the selected job.
+- Press `m` to move the selected job into a folder or subfolder.
+- Press `f` to create a new 1st or 2nd level folder.
+- Press `p` to pause or resume a routine.
 - Press `q` to exit.
 
-### 3. Activate the Background Daemon
+### 3. For AI Agents: Autonomous CLI Manipulation
+
+You can ask any AI coding agent (Claude Code, Google Antigravity, Cursor, OpenAI Codex) to inspect, configure, trigger, and reorganize your routines directly on your behalf.
+
+AI agents discover all available commands, options, and parameters using `roostr help`:
+
+```bash
+# Discover top-level capabilities
+roostr help
+
+# Learn how to manage routines or folders
+roostr help job
+roostr help folder
+
+# Inspect detailed flags and validation for creating routines
+roostr job create --help
+```
+
+#### Machine-Readable Structured Output (`--json`)
+
+Every inspection and mutation command supports `--json` so AI agents receive clean, structured data for programmatic reasoning:
+
+```bash
+# List all routines (returns structured JSON array)
+roostr job list --json
+
+# Trigger a routine immediately or run all due routines right now
+roostr run <job_id>
+roostr run --due
+
+# Create a new scheduled routine programmatically
+roostr job create \
+  --name "Morning PR Review" \
+  --prompt "Review open pull requests" \
+  --harness claude \
+  --target herdr \
+  --times "08:00,14:00" \
+  --days "mon,tue,wed,thu,fri" \
+  --folder "Work/Daily" \
+  --json
+
+# Inspect job details and execution history
+roostr job show <job_id> --json
+roostr history <job_id> --json
+
+# Pause or resume routines
+roostr job pause <job_id> --json
+roostr job resume <job_id> --json
+```
+
+### 4. Activate the Background Daemon
 
 To ensure your routines run automatically on schedule while your terminal is closed, install the native macOS `launchd` service:
 
@@ -125,36 +183,6 @@ To remove or disable the service:
 roostr daemon uninstall
 ```
 
-### 4. Autonomous CLI & AI Control
-
-AI coding agents and terminal scripts can control Roostr without opening the interactive TUI. Use the `--json` flag for machine-readable output:
-
-```bash
-# List all routines (human or JSON)
-roostr job list
-roostr job list --json
-
-# Trigger a routine immediately
-roostr run <job_id>
-roostr run --due          # Run all routines that are currently due
-
-# Create a new scheduled routine
-roostr job create \
-  --name "Morning PR Review" \
-  --prompt "Review open pull requests" \
-  --harness claude \
-  --target herdr \
-  --times "08:00,14:00" \
-  --folder "Work/Daily"
-
-# Show details or recent history
-roostr job show <job_id> --json
-roostr history <job_id> --json
-
-# Pause or resume routines
-roostr job pause <job_id>
-roostr job resume <job_id>
-```
 
 ---
 
