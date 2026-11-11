@@ -315,16 +315,25 @@ class SQLiteStorage:
                 details=row["details"],
             )
 
-    def get_recent_executions(self, job_id: str, limit: int = 5) -> list[ExecutionRecord]:
+    def get_recent_executions(self, job_id: str | None = None, limit: int = 5) -> list[ExecutionRecord]:
         with self._connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM executions 
-                WHERE job_id = ? 
-                ORDER BY timestamp DESC LIMIT ?
-                """,
-                (job_id, limit),
-            ).fetchall()
+            if job_id:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM executions 
+                    WHERE job_id = ? 
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    (job_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM executions 
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
             return [
                 ExecutionRecord(
                     id=row["id"],
