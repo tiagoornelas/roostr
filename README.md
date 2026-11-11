@@ -125,6 +125,37 @@ To remove or disable the service:
 roostr daemon uninstall
 ```
 
+### 4. Autonomous CLI & AI Control
+
+AI coding agents and terminal scripts can control Roostr without opening the interactive TUI. Use the `--json` flag for machine-readable output:
+
+```bash
+# List all routines (human or JSON)
+roostr job list
+roostr job list --json
+
+# Trigger a routine immediately
+roostr run <job_id>
+roostr run --due          # Run all routines that are currently due
+
+# Create a new scheduled routine
+roostr job create \
+  --name "Morning PR Review" \
+  --prompt "Review open pull requests" \
+  --harness claude \
+  --target herdr \
+  --times "08:00,14:00" \
+  --folder "Work/Daily"
+
+# Show details or recent history
+roostr job show <job_id> --json
+roostr history <job_id> --json
+
+# Pause or resume routines
+roostr job pause <job_id>
+roostr job resume <job_id>
+```
+
 ---
 
 ## 🤖 Supported AI Harnesses

@@ -215,3 +215,283 @@ def test_cli_setup_herdr_failure():
         res = runner.invoke(main, ["setup-herdr"])
         assert res.exit_code == 0
         assert "Herdr App not found" in res.output
+
+
+# ==============================================================================
+# Job CLI Tests
+# ==============================================================================
+
+
+def test_cli_job_create_and_show_and_list(tmp_path):
+    import json
+
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    # Create an agent job with --json
+    create_res = runner.invoke(
+        main,
+        [
+            "--db",
+            str(db_file),
+            "job",
+            "create",
+            "--name",
+            "Morning PR Review",
+            "--prompt",
+            "Review pull requests",
+            "--harness",
+            "claude",
+            "--folder",
+            "Work/Daily",
+            "--times",
+            "08:00,14:00",
+            "--json",
+        ],
+    )
+    assert create_res.exit_code == 0
+    created_data = json.loads(create_res.output)
+    assert created_data["name"] == "Morning PR Review"
+    assert created_data["id"] == "morning-pr-review"
+    assert created_data["folder"] == "Work/Daily"
+    assert created_data["action"]["harness"] == "claude"
+
+    # List jobs (standard format)
+    list_res = runner.invoke(main, ["--db", str(db_file), "job", "list"])
+    assert list_res.exit_code == 0
+    assert "Morning PR Review" in list_res.output
+    assert "morning-pr-review" in list_res.output
+
+    # List jobs with --json
+    list_json_res = runner.invoke(main, ["--db", str(db_file), "job", "list", "--json"])
+    assert list_json_res.exit_code == 0
+    jobs_json = json.loads(list_json_res.output)
+    assert len(jobs_json) == 1
+    assert jobs_json[0]["id"] == "morning-pr-review"
+
+    # Show job with --json
+    show_json_res = runner.invoke(main, ["--db", str(db_file), "job", "show", "morning-pr-review", "--json"])
+    assert show_json_res.exit_code == 0
+    show_data = json.loads(show_json_res.output)
+    assert show_data["id"] == "morning-pr-review"
+    assert show_data["action"]["prompt"] == "Review pull requests"
+
+    # Show job (standard visual format)
+    show_res = runner.invoke(main, ["--db", str(db_file), "job", "show", "morning-pr-review"])
+    assert show_res.exit_code == 0
+    assert "Morning PR Review (morning-pr-review)" in show_res.output
+    assert "Status:       ACTIVE" in show_res.output
+
+
+def test_cli_job_create_command_action(tmp_path):
+    import json
+
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    res = runner.invoke(
+        main,
+        [
+            "--db",
+            str(db_file),
+            "job",
+            "create",
+            "--name",
+            "Build Check",
+            "--command",
+            "npm test",
+            "--target",
+            "terminal",
+            "--terminal-app",
+            "ghostty",
+            "--json",
+        ],
+    )
+    assert res.exit_code == 0
+    data = json.loads(res.output)
+    assert data["id"] == "build-check"
+    assert data["action"]["type"] == "command"
+    assert data["target"]["app"] == "ghostty"
+
+
+def test_cli_job_create_missing_prompt_and_command(tmp_path):
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    res = runner.invoke(main, ["--db", str(db_file), "job", "create", "--name", "Incomplete"])
+    assert res.exit_code == 1
+    assert "Either --prompt or --command is required" in res.output
+
+
+def test_cli_job_pause_resume_update_delete(tmp_path):
+    import json
+
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    # Create job
+    runner.invoke(
+        main,
+        ["--db", str(db_file), "job", "create", "-n", "Audit", "-p", "Audit code", "-t", "09:00"],
+    )
+
+    # Pause
+    pause_res = runner.invoke(main, ["--db", str(db_file), "job", "pause", "audit", "--json"])
+    assert pause_res.exit_code == 0
+    assert json.loads(pause_res.output)["is_paused"] is True
+
+    # Filter list by status
+    list_active = runner.invoke(main, ["--db", str(db_file), "job", "list", "--status", "active", "--json"])
+    assert len(json.loads(list_active.output)) == 0
+
+    list_paused = runner.invoke(main, ["--db", str(db_file), "job", "list", "--status", "paused", "--json"])
+    assert len(json.loads(list_paused.output)) == 1
+
+    # Resume
+    resume_res = runner.invoke(main, ["--db", str(db_file), "job", "resume", "audit", "--json"])
+    assert resume_res.exit_code == 0
+    assert json.loads(resume_res.output)["is_paused"] is False
+
+    # Update
+    update_res = runner.invoke(
+        main,
+        [
+            "--db",
+            str(db_file),
+            "job",
+            "update",
+            "audit",
+            "-n",
+            "Security Audit",
+            "-p",
+            "Audit security",
+            "--folder",
+            "Security",
+            "--json",
+        ],
+    )
+    assert update_res.exit_code == 0
+    updated_data = json.loads(update_res.output)
+    assert updated_data["name"] == "Security Audit"
+    assert updated_data["folder"] == "Security"
+    assert updated_data["action"]["prompt"] == "Audit security"
+
+    # Delete with --yes and --json
+    del_res = runner.invoke(main, ["--db", str(db_file), "job", "delete", "audit", "--yes", "--json"])
+    assert del_res.exit_code == 0
+    assert json.loads(del_res.output)["deleted"] is True
+
+    # Verify not found
+    show_del = runner.invoke(main, ["--db", str(db_file), "job", "show", "audit"])
+    assert show_del.exit_code == 1
+    assert "not found" in show_del.output
+
+
+def test_cli_job_run_alias(tmp_path):
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    # Create job
+    runner.invoke(main, ["--db", str(db_file), "job", "create", "-n", "Quick Job", "-c", "echo hello"])
+
+    with patch("roostr.cli.ExecuteJobUseCase") as mock_use_case_cls:
+        mock_instance = MagicMock()
+        mock_instance.execute.return_value = (ExecutionStatus.SUCCESS, "Executed")
+        mock_use_case_cls.return_value = mock_instance
+
+        res = runner.invoke(main, ["--db", str(db_file), "job", "run", "quick-job", "--json"])
+        assert res.exit_code == 0
+        assert '"status": "success"' in res.output
+
+
+def test_cli_run_due_jobs(tmp_path):
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    with patch("roostr.application.use_cases.daemon.DaemonSchedulerUseCase.tick") as mock_tick:
+        mock_tick.return_value = [("job-1", ExecutionStatus.SUCCESS, "Done")]
+        res = runner.invoke(main, ["--db", str(db_file), "run", "--due", "--json"])
+        assert res.exit_code == 0
+        assert '"executed_count": 1' in res.output
+
+
+# ==============================================================================
+# Folder and History CLI Tests
+# ==============================================================================
+
+
+def test_cli_folder_lifecycle(tmp_path):
+    import json
+
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+
+    # Create folder
+    create_res = runner.invoke(main, ["--db", str(db_file), "folder", "create", "Work/Daily", "--json"])
+    assert create_res.exit_code == 0
+    assert json.loads(create_res.output)["folder"] == "Work/Daily"
+
+    # List folders
+    list_res = runner.invoke(main, ["--db", str(db_file), "folder", "list", "--json"])
+    assert list_res.exit_code == 0
+    folders = json.loads(list_res.output)
+    folder_names = [f["name"] for f in folders]
+    assert "Work" in folder_names
+    assert "Work/Daily" in folder_names
+
+    # Delete empty folder
+    del_res = runner.invoke(main, ["--db", str(db_file), "folder", "delete", "Work/Daily", "--json"])
+    assert del_res.exit_code == 0
+    assert json.loads(del_res.output)["deleted"] is True
+
+
+def test_cli_history_inspection(tmp_path):
+    import json
+    from datetime import datetime
+
+    from roostr.domain.enums import TriggerType
+    from roostr.domain.models import ExecutionRecord
+    from roostr.infrastructure.storage import SQLiteStorage
+
+    runner = CliRunner()
+    db_file = tmp_path / "test.db"
+    storage = SQLiteStorage(db_file)
+
+    # Empty history
+    empty_res = runner.invoke(main, ["--db", str(db_file), "history"])
+    assert empty_res.exit_code == 0
+    assert "No execution history found" in empty_res.output
+
+    # Create job first so FK constraint is satisfied
+    create_job_res = runner.invoke(
+        main,
+        ["--db", str(db_file), "job", "create", "-n", "Test Job", "-c", "echo 1", "--id", "test-job"],
+    )
+    assert create_job_res.exit_code == 0
+
+    # Add execution record
+    storage.record_execution(
+        ExecutionRecord(
+            id=None,
+            job_id="test-job",
+            timestamp=datetime(2026, 11, 11, 8, 30),
+            trigger_type=TriggerType.SCHEDULED,
+            status=ExecutionStatus.SUCCESS,
+            details="Executed in Herdr",
+        )
+    )
+
+    # View history with --json
+    hist_json = runner.invoke(main, ["--db", str(db_file), "history", "--json"])
+    assert hist_json.exit_code == 0
+    records = json.loads(hist_json.output)
+    assert len(records) == 1
+    assert records[0]["job_id"] == "test-job"
+    assert records[0]["status"] == "success"
+
+    # View history for specific job
+    hist_job = runner.invoke(main, ["--db", str(db_file), "history", "test-job"])
+    assert hist_job.exit_code == 0
+    assert "test-job" in hist_job.output
+
+

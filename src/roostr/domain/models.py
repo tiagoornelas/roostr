@@ -48,6 +48,42 @@ def parse_time_string(s: str) -> time:
     return time(h, m)
 
 
+def parse_days_of_week(s: str) -> tuple[int, ...]:
+    """Parse friendly days string into tuple of weekday integers (0=Monday ... 6=Sunday).
+
+    Examples: 'all', 'weekdays', 'weekends', 'mon,tue,wed', 'seg,qua,sex', '0,1,2,3,4'
+    """
+    clean = s.strip().lower()
+    if clean in ("all", "*", "everyday", "daily", "todos"):
+        return (0, 1, 2, 3, 4, 5, 6)
+    if clean in ("weekdays", "workdays", "uteis", "úteis"):
+        return (0, 1, 2, 3, 4)
+    if clean in ("weekends", "fimdesemana", "fds"):
+        return (5, 6)
+
+    day_map = {
+        "mon": 0, "monday": 0, "seg": 0, "segunda": 0, "0": 0,
+        "tue": 1, "tuesday": 1, "ter": 1, "terca": 1, "terça": 1, "1": 1,
+        "wed": 2, "wednesday": 2, "qua": 2, "quarta": 2, "2": 2,
+        "thu": 3, "thursday": 3, "qui": 3, "quinta": 3, "3": 3,
+        "fri": 4, "friday": 4, "sex": 4, "sexta": 4, "4": 4,
+        "sat": 5, "saturday": 5, "sab": 5, "sabado": 5, "sábado": 5, "5": 5,
+        "sun": 6, "sunday": 6, "dom": 6, "domingo": 6, "6": 6,
+    }
+    days = set()
+    for part in clean.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if p in day_map:
+            days.add(day_map[p])
+        else:
+            raise ValueError(f"Unknown weekday '{p}'. Valid examples: mon,tue,wed or all, weekdays, weekends")
+    if not days:
+        return (0, 1, 2, 3, 4, 5, 6)
+    return tuple(sorted(days))
+
+
 def parse_times_list(s: str) -> tuple[time, ...]:
     """Parse comma-separated list of friendly time strings."""
     raw_parts = [p.strip() for p in s.split(",") if p.strip()]
@@ -320,6 +356,48 @@ class Job:
             .replace("{YYYY-MM-DD}", dt.strftime("%Y-%m-%d"))
         )
 
+    def to_dict(self) -> dict:
+        target_info: dict = {
+            "type": self.target.target_type.value,
+        }
+        if isinstance(self.target, TerminalTargetConfig):
+            target_info["app"] = self.target.app.value
+            target_info["keep_open"] = self.target.keep_open
+        elif isinstance(self.target, HerdrTargetConfig):
+            target_info["space"] = self.target.space
+            target_info["tab_template"] = self.target.tab_template
+        elif isinstance(self.target, BackgroundTargetConfig):
+            target_info["notify_on_complete"] = self.target.notify_on_complete
+
+        action_info: dict = {
+            "type": self.action.action_type.value,
+            "command": self.command,
+        }
+        if isinstance(self.action, AgentAction):
+            action_info["harness"] = self.action.harness.value
+            action_info["prompt"] = self.action.prompt
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "cwd": self.cwd,
+            "folder": self.folder,
+            "is_paused": self.is_paused,
+            "created_at": self.created_at.isoformat(),
+            "action": action_info,
+            "target": target_info,
+            "schedule": {
+                "frequency": self.schedule.frequency.value,
+                "interval_value": self.schedule.interval_value,
+                "days_of_week": list(self.schedule.days_of_week),
+                "times_of_day": [t.strftime("%H:%M") for t in self.schedule.times_of_day],
+                "start_time": self.schedule.start_time.strftime("%H:%M") if self.schedule.start_time else None,
+                "end_time": self.schedule.end_time.strftime("%H:%M") if self.schedule.end_time else None,
+                "tolerance_mode": self.schedule.tolerance_mode.value,
+                "tolerance_value": self.schedule.tolerance_value,
+            },
+        }
+
 
 @dataclass(slots=True)
 class ExecutionRecord:
@@ -329,3 +407,14 @@ class ExecutionRecord:
     trigger_type: TriggerType
     status: ExecutionStatus
     details: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "job_id": self.job_id,
+            "timestamp": self.timestamp.isoformat(),
+            "trigger_type": self.trigger_type.value,
+            "status": self.status.value,
+            "details": self.details,
+        }
+
