@@ -17,7 +17,11 @@ from roostr.ui.screens.dashboard import (
     FolderHeaderItem,
     SubfolderHeaderItem,
 )
-from roostr.ui.screens.folder_modal import NewFolderModal
+from roostr.ui.screens.folder_modal import (
+    DeleteFolderModal,
+    EditFolderModal,
+    NewFolderModal,
+)
 from roostr.ui.screens.form_modal import JobFormModal
 from roostr.ui.screens.move_modal import MoveJobModal
 from roostr.ui.screens.settings_modal import SettingsModal
@@ -123,6 +127,14 @@ class RoostrApp(App):
         self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
 
     def action_edit_job(self) -> None:
+        focused = self.dashboard_screen.get_current_focused_item()
+        if isinstance(focused, FolderHeaderItem):
+            self._edit_folder(focused.folder_name)
+            return
+        elif isinstance(focused, SubfolderHeaderItem):
+            self._edit_folder(focused.subfolder_key)
+            return
+
         if not self.dashboard_screen.selected_job:
             self.notify(self.msg.notify_no_selection, severity="warning")
             return
@@ -142,6 +154,23 @@ class RoostrApp(App):
                     )
 
         self.push_screen(JobFormModal(job=job, messages=self.msg), on_modal_result)
+
+    def _edit_folder(self, folder_name: str) -> None:
+        def on_edit_result(new_name: str | None) -> None:
+            if new_name and new_name != folder_name:
+                try:
+                    cleaned = self.manage_use_case.rename_folder(folder_name, new_name)
+                    msg = self.msg.notify_folder_renamed.format(old_name=folder_name, new_name=cleaned)
+                    self.notify(msg, title=self.msg.title_success, severity="information")
+                    self.dashboard_screen.refresh_jobs()
+                except Exception as e:
+                    self.notify(
+                        self.msg.msg_error_renaming_folder.format(error=e),
+                        title=self.msg.title_error,
+                        severity="error",
+                    )
+
+        self.push_screen(EditFolderModal(current_name=folder_name, messages=self.msg), on_edit_result)
 
     def action_move_job(self) -> None:
         if not self.dashboard_screen.selected_job:
@@ -221,26 +250,10 @@ class RoostrApp(App):
     def action_delete_job(self) -> None:
         focused = self.dashboard_screen.get_current_focused_item()
         if isinstance(focused, FolderHeaderItem):
-            fn = focused.folder_name
-            try:
-                self.manage_use_case.delete_folder(fn)
-                self.notify(
-                    self.msg.notify_folder_deleted.format(name=fn), title=self.msg.title_deleted, severity="information"
-                )
-                self.dashboard_screen.refresh_jobs()
-            except ValueError as e:
-                self.notify(str(e), title=self.msg.title_cannot_delete, severity="warning")
+            self._delete_folder(focused.folder_name)
             return
         elif isinstance(focused, SubfolderHeaderItem):
-            sk = focused.subfolder_key
-            try:
-                self.manage_use_case.delete_folder(sk)
-                self.notify(
-                    self.msg.notify_folder_deleted.format(name=sk), title=self.msg.title_deleted, severity="information"
-                )
-                self.dashboard_screen.refresh_jobs()
-            except ValueError as e:
-                self.notify(str(e), title=self.msg.title_cannot_delete, severity="warning")
+            self._delete_folder(focused.subfolder_key)
             return
 
         if not self.dashboard_screen.selected_job:
@@ -251,6 +264,50 @@ class RoostrApp(App):
         deleted_msg = self.msg.notify_success_deleted.replace("{name}", job.name)
         self.notify(deleted_msg, title=self.msg.title_deleted, severity="information")
         self.dashboard_screen.refresh_jobs()
+
+    def _delete_folder(self, folder_name: str) -> None:
+        jobs_in_folder = self.manage_use_case.list_jobs(folder=folder_name)
+        if not jobs_in_folder:
+            try:
+                self.manage_use_case.delete_folder(folder_name)
+                self.notify(
+                    self.msg.notify_folder_deleted.format(name=folder_name),
+                    title=self.msg.title_deleted,
+                    severity="information",
+                )
+                self.dashboard_screen.refresh_jobs()
+            except ValueError as e:
+                self.notify(str(e), title=self.msg.title_cannot_delete, severity="warning")
+            return
+
+        def on_delete_result(result: str | None) -> None:
+            if result == "ungroup":
+                try:
+                    self.manage_use_case.delete_folder(folder_name, force=True, delete_jobs=False)
+                    self.notify(
+                        self.msg.notify_folder_deleted.format(name=folder_name),
+                        title=self.msg.title_deleted,
+                        severity="information",
+                    )
+                    self.dashboard_screen.refresh_jobs()
+                except Exception as e:
+                    self.notify(str(e), title=self.msg.title_error, severity="error")
+            elif result == "delete_jobs":
+                try:
+                    self.manage_use_case.delete_folder(folder_name, force=True, delete_jobs=True)
+                    self.notify(
+                        self.msg.notify_folder_and_jobs_deleted.format(name=folder_name, count=len(jobs_in_folder)),
+                        title=self.msg.title_deleted,
+                        severity="information",
+                    )
+                    self.dashboard_screen.refresh_jobs()
+                except Exception as e:
+                    self.notify(str(e), title=self.msg.title_error, severity="error")
+
+        self.push_screen(
+            DeleteFolderModal(folder_name=folder_name, job_count=len(jobs_in_folder), messages=self.msg),
+            on_delete_result,
+        )
 
     def _update_bindings_language(self) -> None:
         key_descriptions = {

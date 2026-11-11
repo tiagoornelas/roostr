@@ -499,10 +499,67 @@ def test_cli_folder_lifecycle(tmp_path):
     assert "Work" in folder_names
     assert "Work/Daily" in folder_names
 
-    # Delete empty folder
-    del_res = runner.invoke(main, ["--db", str(db_file), "folder", "delete", "Work/Daily", "--json"])
-    assert del_res.exit_code == 0
-    assert json.loads(del_res.output)["deleted"] is True
+    # Rename/edit folder with --json
+    edit_res = runner.invoke(main, ["--db", str(db_file), "folder", "edit", "Work/Daily", "Work/Morning", "--json"])
+    assert edit_res.exit_code == 0
+    edit_data = json.loads(edit_res.output)
+    assert edit_data["old_name"] == "Work/Daily"
+    assert edit_data["new_name"] == "Work/Morning"
+    assert edit_data["renamed"] is True
+
+    # Rename alias in standard text mode
+    rename_res = runner.invoke(main, ["--db", str(db_file), "folder", "rename", "Work/Morning", "Work/Tasks"])
+    assert rename_res.exit_code == 0
+    assert "Renamed folder 'Work/Morning' to 'Work/Tasks'" in rename_res.output
+
+    # Edit error when folder not found
+    err_res = runner.invoke(main, ["--db", str(db_file), "folder", "edit", "NonExistent", "NewName"])
+    assert err_res.exit_code == 1
+    assert "Error:" in err_res.output
+
+    # Create job in folder to test non-empty delete
+    job_create = runner.invoke(
+        main,
+        [
+            "--db",
+            str(db_file),
+            "job",
+            "create",
+            "--name",
+            "Test Job",
+            "--command",
+            "echo 1",
+            "--folder",
+            "Work/Tasks",
+            "--json",
+        ],
+    )
+    assert job_create.exit_code == 0
+
+    # Deleting non-empty folder without flags fails
+    del_fail = runner.invoke(main, ["--db", str(db_file), "folder", "delete", "Work/Tasks"])
+    assert del_fail.exit_code == 1
+    assert "contains 1 job" in del_fail.output
+
+    # Force delete ungroups the job
+    del_force = runner.invoke(main, ["--db", str(db_file), "folder", "delete", "Work/Tasks", "--force", "--json"])
+    assert del_force.exit_code == 0
+    assert json.loads(del_force.output)["deleted"] is True
+
+    # Verify job is now ungrouped
+    job_show = runner.invoke(main, ["--db", str(db_file), "job", "show", "test-job", "--json"])
+    assert job_show.exit_code == 0
+    assert json.loads(job_show.output)["folder"] is None
+
+    # Move job back to Work and test --delete-jobs
+    runner.invoke(main, ["--db", str(db_file), "job", "update", "test-job", "--folder", "Work"])
+    del_jobs = runner.invoke(main, ["--db", str(db_file), "folder", "delete", "Work", "--delete-jobs", "--json"])
+    assert del_jobs.exit_code == 0
+    assert json.loads(del_jobs.output)["delete_jobs"] is True
+
+    # Verify job was deleted
+    job_show_del = runner.invoke(main, ["--db", str(db_file), "job", "show", "test-job"])
+    assert job_show_del.exit_code == 1
 
 
 def test_cli_history_inspection(tmp_path):

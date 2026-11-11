@@ -867,6 +867,7 @@ class DashboardScreen(Screen):
             self.show_folder_details(event.item.subfolder_key, event.item.count, is_subfolder=True)
 
     def show_folder_details(self, folder_name: str, count: int, is_subfolder: bool = False) -> None:
+        self.selected_job = None
         primary_color = (
             self.app.current_theme.primary
             if hasattr(self.app, "current_theme") and self.app.current_theme
@@ -880,6 +881,7 @@ class DashboardScreen(Screen):
 [bold {primary_color}]{self.msg.folder_actions_title}[/]
 [dim]• {self.msg.folder_action_move}[/]
 [dim]• {self.msg.folder_action_create}[/]
+[dim]• {self.msg.folder_action_edit}[/]
 [dim]• {self.msg.folder_action_delete}[/]
 """
         self.query_one("#inspector-details", Static).update(details_markup)
