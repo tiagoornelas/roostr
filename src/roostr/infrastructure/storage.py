@@ -231,7 +231,7 @@ class SQLiteStorage:
             )
             return [row[0] for row in cursor.fetchall() if row[0]]
 
-    def delete_folder(self, name: str) -> None:
+    def delete_folder(self, name: str, force: bool = False, delete_jobs: bool = False) -> None:
         cleaned = "/".join([p.strip() for p in name.strip().strip("/").split("/") if p.strip()])
         with self._connection() as conn:
             cursor = conn.execute(
@@ -239,9 +239,80 @@ class SQLiteStorage:
                 (cleaned, cleaned),
             )
             count = cursor.fetchone()[0]
-            if count > 0:
+            if count > 0 and not (force or delete_jobs):
                 raise ValueError(f"Cannot delete folder '{cleaned}': contains {count} job(s)")
+
+            if delete_jobs:
+                conn.execute("DELETE FROM jobs WHERE folder = ? OR folder LIKE ? || '/%'", (cleaned, cleaned))
+            elif count > 0:
+                conn.execute(
+                    "UPDATE jobs SET folder = NULL WHERE folder = ? OR folder LIKE ? || '/%'",
+                    (cleaned, cleaned),
+                )
+
             conn.execute("DELETE FROM folders WHERE name = ? OR name LIKE ? || '/%'", (cleaned, cleaned))
+
+    def rename_folder(self, old_name: str, new_name: str) -> str:
+        cleaned_old = "/".join([p.strip() for p in old_name.strip().strip("/").split("/") if p.strip()])
+        if not cleaned_old:
+            raise ValueError("Folder name cannot be empty")
+
+        cleaned_new = "/".join([p.strip() for p in new_name.strip().strip("/").split("/") if p.strip()])
+        if not cleaned_new:
+            raise ValueError("Folder name cannot be empty")
+
+        parts_new = cleaned_new.split("/")
+        if len(parts_new) > 2:
+            raise ValueError(f"Folder hierarchy cannot exceed 2 levels (got '{new_name}')")
+
+        if cleaned_old == cleaned_new:
+            return cleaned_new
+
+        existing_folders = self.list_folders()
+        if cleaned_old not in existing_folders:
+            raise ValueError(f"Folder '{cleaned_old}' not found")
+
+        if cleaned_new in existing_folders and cleaned_new.lower() != cleaned_old.lower():
+            raise ValueError(f"Folder '{cleaned_new}' already exists")
+
+        with self._connection() as conn:
+            # Check if cleaned_old has subfolders
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM folders WHERE name LIKE ? || '/%' UNION ALL SELECT COUNT(*) FROM jobs WHERE folder LIKE ? || '/%'",
+                (cleaned_old, cleaned_old),
+            )
+            subfolder_counts = [r[0] for r in cursor.fetchall()]
+            has_subfolders = any(c > 0 for c in subfolder_counts)
+
+            if has_subfolders and len(parts_new) > 1:
+                raise ValueError("Cannot move a folder with subfolders into another folder (max 2 levels)")
+
+            # 1. Update subfolders in folders table
+            cursor = conn.execute("SELECT name FROM folders WHERE name LIKE ? || '/%'", (cleaned_old,))
+            subfolders = [row[0] for row in cursor.fetchall()]
+            for sf in subfolders:
+                suffix = sf[len(cleaned_old) :]
+                target_sf = cleaned_new + suffix
+                conn.execute("UPDATE OR REPLACE folders SET name = ? WHERE name = ?", (target_sf, sf))
+
+            # 2. Update parent folder if cleaned_new is 2-level
+            if len(parts_new) == 2:
+                conn.execute("INSERT OR IGNORE INTO folders (name) VALUES (?)", (parts_new[0],))
+
+            # 3. Update the folder itself in folders table
+            conn.execute("UPDATE OR REPLACE folders SET name = ? WHERE name = ?", (cleaned_new, cleaned_old))
+
+            # 4. Update jobs with exact folder match
+            conn.execute("UPDATE jobs SET folder = ? WHERE folder = ?", (cleaned_new, cleaned_old))
+
+            # 5. Update jobs in subfolders
+            cursor = conn.execute("SELECT id, folder FROM jobs WHERE folder LIKE ? || '/%'", (cleaned_old,))
+            subfolder_jobs = cursor.fetchall()
+            for job_id, f_val in subfolder_jobs:
+                suffix = f_val[len(cleaned_old) :]
+                conn.execute("UPDATE jobs SET folder = ? WHERE id = ?", (cleaned_new + suffix, job_id))
+
+        return cleaned_new
 
     def move_job(self, job_id: str, folder: str | None) -> None:
         cleaned_folder: str | None = None

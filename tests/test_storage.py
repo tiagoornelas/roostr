@@ -204,6 +204,112 @@ def test_storage_folder_operations(storage):
     assert "Finance" not in storage.list_folders()
 
 
+def test_storage_rename_folder(storage):
+    storage.save_folder("Engineering")
+    storage.save_folder("Engineering/Backend")
+    storage.save_folder("Engineering/Frontend")
+
+    job_be = Job(
+        id="job-be",
+        name="BE Job",
+        cwd="/tmp",
+        command="echo be",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Engineering/Backend",
+    )
+    job_fe = Job(
+        id="job-fe",
+        name="FE Job",
+        cwd="/tmp",
+        command="echo fe",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Engineering/Frontend",
+    )
+    job_root = Job(
+        id="job-root",
+        name="Root Job",
+        cwd="/tmp",
+        command="echo root",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Engineering",
+    )
+    storage.save_job(job_be)
+    storage.save_job(job_fe)
+    storage.save_job(job_root)
+
+    # 1. Rename root folder cascades to subfolders and all jobs
+    storage.rename_folder("Engineering", "Tech")
+    folders = storage.list_folders()
+    assert "Tech" in folders
+    assert "Tech/Backend" in folders
+    assert "Tech/Frontend" in folders
+    assert "Engineering" not in folders
+    assert "Engineering/Backend" not in folders
+
+    assert storage.get_job("job-root").folder == "Tech"
+    assert storage.get_job("job-be").folder == "Tech/Backend"
+    assert storage.get_job("job-fe").folder == "Tech/Frontend"
+
+    # 2. Rename subfolder updates its jobs
+    storage.rename_folder("Tech/Backend", "Tech/API")
+    assert "Tech/API" in storage.list_folders()
+    assert "Tech/Backend" not in storage.list_folders()
+    assert storage.get_job("job-be").folder == "Tech/API"
+
+    # 3. Rename with identical name is no-op
+    assert storage.rename_folder("Tech", "Tech") == "Tech"
+
+    # 4. Validations
+    with pytest.raises(ValueError, match="Folder name cannot be empty"):
+        storage.rename_folder("Tech", "   ")
+
+    with pytest.raises(ValueError, match="cannot exceed 2 levels"):
+        storage.rename_folder("Tech", "A/B/C")
+
+    with pytest.raises(ValueError, match="not found"):
+        storage.rename_folder("NonExistent", "NewName")
+
+    with pytest.raises(ValueError, match="already exists"):
+        storage.rename_folder("Tech/Frontend", "Tech/API")
+
+    with pytest.raises(ValueError, match="Cannot move a folder with subfolders"):
+        storage.rename_folder("Tech", "Parent/Tech")
+
+
+def test_storage_delete_folder_force_and_cascade(storage):
+    storage.save_folder("Work")
+    storage.save_folder("Work/Tasks")
+
+    job = Job(
+        id="task-1",
+        name="Task 1",
+        cwd="/tmp",
+        command="echo 1",
+        schedule=SchedulePolicy((0,), time(10, 0)),
+        target=BackgroundTargetConfig(),
+        folder="Work/Tasks",
+    )
+    storage.save_job(job)
+
+    # Force delete moves jobs to ungrouped/root (folder=None)
+    storage.delete_folder("Work/Tasks", force=True, delete_jobs=False)
+    assert "Work/Tasks" not in storage.list_folders()
+    updated_job = storage.get_job("task-1")
+    assert updated_job is not None
+    assert updated_job.folder is None
+
+    # Cascade delete deletes folder and jobs
+    storage.move_job("task-1", "Work")
+    assert storage.get_job("task-1").folder == "Work"
+
+    storage.delete_folder("Work", force=True, delete_jobs=True)
+    assert "Work" not in storage.list_folders()
+    assert storage.get_job("task-1") is None
+
+
 def test_storage_settings(storage):
     assert storage.get_setting("theme") is None
     assert storage.get_setting("theme", "night") == "night"

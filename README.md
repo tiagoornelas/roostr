@@ -106,9 +106,11 @@ roostr
 ```
 
 - Press `n` to create a new routine (e.g. a morning PR review with Claude or Antigravity).
+- Press `e` to edit the selected routine or rename the focused folder.
 - Press `r` to immediately test-run the selected job.
 - Press `m` to move the selected job into a folder or subfolder.
 - Press `f` to create a new 1st or 2nd level folder.
+- Press `d` to delete the selected job or folder.
 - Press `p` to pause or resume a routine.
 - Press `q` to exit.
 
@@ -160,6 +162,12 @@ roostr history <job_id> --json
 # Pause or resume routines
 roostr job pause <job_id> --json
 roostr job resume <job_id> --json
+
+# Manage folders (list, create, edit/rename, delete)
+roostr folder list --json
+roostr folder create "Work/Daily" --json
+roostr folder edit "Work/Daily" "Work/Morning" --json
+roostr folder delete "Work/Morning" --force --json
 ```
 
 ### 4. Activate the Background Daemon
@@ -226,11 +234,12 @@ Silent headless runner for automated background audits, cron tasks, or headless 
 | Key | Action | Description |
 | :---: | :--- | :--- |
 | `n` | **New Job** | Opens the responsive tabbed creation modal |
+| `e` | **Edit** | Edits the selected job or renames the focused folder |
 | `r` | **Run Now** | Immediately triggers the selected job |
 | `m` | **Move** | Moves the selected job into a folder or subfolder |
 | `f` | **New Folder** | Creates a new 1st or 2nd level folder |
 | `p` | **Pause / Resume** | Toggles job activation |
-| `d` | **Delete** | Deletes the selected job or empty folder |
+| `d` | **Delete** | Deletes the selected job or folder |
 | `s` | **Settings** | Opens theme and language preferences dialog |
 | `l` | **Language** | Cycles between English, Português, and Español |
 | `t` | **Theme** | Cycles between curated color themes |

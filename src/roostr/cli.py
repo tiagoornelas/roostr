@@ -791,22 +791,62 @@ def folder_create(ctx: click.Context, name: str, json_output: bool, db: Path | N
         sys.exit(1)
 
 
-@folder_group.command(name="delete")
-@click.argument("name")
+@folder_group.command(name="edit")
+@click.argument("old_name")
+@click.argument("new_name")
 @click.option("--json", "json_output", is_flag=True, help="Output status as JSON.")
 @click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
 @click.pass_context
-def folder_delete(ctx: click.Context, name: str, json_output: bool, db: Path | None) -> None:
-    """Delete an empty folder."""
+def folder_edit(ctx: click.Context, old_name: str, new_name: str, json_output: bool, db: Path | None) -> None:
+    """Rename/edit an existing folder."""
     storage = get_storage_from_ctx(ctx, db)
     use_case = ManageJobsUseCase(storage=storage)
 
     try:
-        use_case.delete_folder(name)
+        cleaned = use_case.rename_folder(old_name, new_name)
         if json_output:
-            click.echo(json.dumps({"folder": name, "deleted": True}))
+            click.echo(json.dumps({"old_name": old_name, "new_name": cleaned, "renamed": True}))
         else:
-            click.echo(f"✓ Deleted folder '{name}'")
+            click.echo(f"✓ Renamed folder '{old_name}' to '{cleaned}'")
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@folder_group.command(name="rename")
+@click.argument("old_name")
+@click.argument("new_name")
+@click.option("--json", "json_output", is_flag=True, help="Output status as JSON.")
+@click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
+@click.pass_context
+def folder_rename(ctx: click.Context, old_name: str, new_name: str, json_output: bool, db: Path | None) -> None:
+    """Rename an existing folder (alias for edit)."""
+    ctx.invoke(folder_edit, old_name=old_name, new_name=new_name, json_output=json_output, db=db)
+
+
+@folder_group.command(name="delete")
+@click.argument("name")
+@click.option("--force", "-f", is_flag=True, help="Delete folder even if it contains jobs (jobs become ungrouped).")
+@click.option("--delete-jobs", is_flag=True, help="Delete folder and permanently delete all jobs inside.")
+@click.option("--json", "json_output", is_flag=True, help="Output status as JSON.")
+@click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
+@click.pass_context
+def folder_delete(
+    ctx: click.Context, name: str, force: bool, delete_jobs: bool, json_output: bool, db: Path | None
+) -> None:
+    """Delete a folder. If it contains jobs, use --force to ungroup them or --delete-jobs to delete them."""
+    storage = get_storage_from_ctx(ctx, db)
+    use_case = ManageJobsUseCase(storage=storage)
+
+    try:
+        use_case.delete_folder(name, force=force or delete_jobs, delete_jobs=delete_jobs)
+        if json_output:
+            click.echo(json.dumps({"folder": name, "deleted": True, "delete_jobs": delete_jobs}))
+        else:
+            if delete_jobs:
+                click.echo(f"✓ Deleted folder '{name}' and all its jobs")
+            else:
+                click.echo(f"✓ Deleted folder '{name}'")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

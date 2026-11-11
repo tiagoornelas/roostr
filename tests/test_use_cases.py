@@ -302,8 +302,27 @@ def test_manage_jobs_toggle_pause_nonexistent_and_delete_folder(storage):
     # Folder operations
     use_case.create_folder("TestFolder")
     assert "TestFolder" in use_case.list_folders()
-    use_case.delete_folder("TestFolder")
+    use_case.rename_folder("TestFolder", "RenamedFolder")
+    assert "RenamedFolder" in use_case.list_folders()
     assert "TestFolder" not in use_case.list_folders()
+    use_case.delete_folder("RenamedFolder")
+    assert "RenamedFolder" not in use_case.list_folders()
+
+
+def test_manage_jobs_delete_folder_with_scheduler_uninstall(storage, terminal_job):
+    scheduler_mock = MagicMock()
+    terminal_job.folder = "ProjectA"
+    storage.save_job(terminal_job)
+
+    use_case = ManageJobsUseCase(storage=storage, scheduler=scheduler_mock)
+    assert any(j.id == terminal_job.id for j in use_case.list_jobs(folder="ProjectA"))
+
+    # Delete with delete_jobs=True should uninstall from scheduler and remove job
+    use_case.delete_folder("ProjectA", force=True, delete_jobs=True)
+    assert scheduler_mock.uninstall.call_count == 1
+    assert scheduler_mock.uninstall.call_args[0][0] == terminal_job.id
+    assert use_case.get_job(terminal_job.id) is None
+    assert "ProjectA" not in use_case.list_folders()
 
 
 def test_execute_job_outside_window_skips(storage, terminal_job):

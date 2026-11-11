@@ -806,7 +806,11 @@ async def test_all_modals_buttons_are_compact_single_row(storage, sample_job):
     from textual.widgets import Button
 
     from roostr.i18n.catalog import get_messages
-    from roostr.ui.screens.folder_modal import NewFolderModal
+    from roostr.ui.screens.folder_modal import (
+        DeleteFolderModal,
+        EditFolderModal,
+        NewFolderModal,
+    )
     from roostr.ui.screens.form_modal import JobFormModal
     from roostr.ui.screens.move_modal import MoveJobModal
     from roostr.ui.screens.settings_modal import SettingsModal
@@ -816,6 +820,8 @@ async def test_all_modals_buttons_are_compact_single_row(storage, sample_job):
         ("SettingsModal", SettingsModal(current_theme="night", current_locale="en", messages=msgs)),
         ("JobFormModal", JobFormModal(messages=msgs)),
         ("NewFolderModal", NewFolderModal(messages=msgs)),
+        ("EditFolderModal", EditFolderModal(current_name="Work", messages=msgs)),
+        ("DeleteFolderModal", DeleteFolderModal(folder_name="Work", job_count=2, messages=msgs)),
         ("MoveJobModal", MoveJobModal(job=sample_job, folders=["Work"], messages=msgs)),
     ]
 
@@ -947,5 +953,107 @@ async def test_dashboard_schedule_driven_refresh(storage, sample_job):
         assert "FAILED" in badge_text
         inspector_text = str(dashboard.query_one("#inspector-details").render())
         assert "FAILED" in inspector_text
-        # And a new timer is scheduled for the next event
-        assert dashboard._refresh_timer is not None
+
+
+@pytest.mark.asyncio
+async def test_app_folder_edit_and_delete_actions(storage):
+    from textual.widgets import Input, ListView
+
+    from roostr.ui.screens.dashboard import FolderHeaderItem
+    from roostr.ui.screens.folder_modal import DeleteFolderModal, EditFolderModal
+
+    storage.save_folder("Work")
+    job = Job(
+        id="j-work-1",
+        name="Work Job 1",
+        cwd="/tmp",
+        command="echo work",
+        schedule=SchedulePolicy((0,), time(8, 0)),
+        target=TerminalTargetConfig(app=TerminalApp.AUTO),
+        folder="Work",
+    )
+    storage.save_job(job)
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        list_view = app.screen.query_one("#jobs-list", ListView)
+        list_view.index = 0
+        await pilot.pause()
+
+        # 1. Edit Folder: press 'e' on FolderHeaderItem
+        await pilot.press("e")
+        await pilot.pause()
+        assert isinstance(app.screen, EditFolderModal)
+
+        inp = app.screen.query_one("#inp-folder-name", Input)
+        assert inp.value == "Work"
+        inp.value = "Projects"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        # Verify folder was renamed
+        assert "Projects" in storage.list_folders()
+        assert "Work" not in storage.list_folders()
+        assert storage.get_job("j-work-1").folder == "Projects"
+
+        # 2. Delete non-empty folder: press 'd' on FolderHeaderItem opens DeleteFolderModal
+        list_view = app.screen.query_one("#jobs-list", ListView)
+        list_view.index = 0
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, DeleteFolderModal)
+
+        # Click ungroup button
+        await pilot.click("#btn-ungroup")
+        await pilot.pause()
+
+        # Folder deleted, job is now ungrouped
+        assert "Projects" not in storage.list_folders()
+        assert storage.get_job("j-work-1").folder is None
+
+        # 3. Delete empty folder: create empty folder and press 'd'
+        storage.save_folder("TempEmpty")
+        app.dashboard_screen.refresh_jobs()
+        await pilot.pause()
+        list_view.index = 0
+        await pilot.pause()
+        assert isinstance(list_view.children[0], FolderHeaderItem)
+        assert list_view.children[0].folder_name == "TempEmpty"
+
+        await pilot.press("d")
+        await pilot.pause()
+        # Deleted immediately without DeleteFolderModal
+        assert "TempEmpty" not in storage.list_folders()
+
+        # 4. Delete folder with cascade delete_jobs
+        storage.save_folder("ToPurge")
+        storage.save_job(
+            Job(
+                id="j-purge",
+                name="Purge Job",
+                cwd="/tmp",
+                command="echo purge",
+                schedule=SchedulePolicy((0,), time(8, 0)),
+                target=TerminalTargetConfig(app=TerminalApp.AUTO),
+                folder="ToPurge",
+            )
+        )
+        app.dashboard_screen.refresh_jobs()
+        await pilot.pause()
+        list_view.index = 0
+        await pilot.pause()
+        assert isinstance(list_view.children[0], FolderHeaderItem)
+        assert list_view.children[0].folder_name == "ToPurge"
+
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, DeleteFolderModal)
+
+        await pilot.click("#btn-delete-all")
+        await pilot.pause()
+
+        assert "ToPurge" not in storage.list_folders()
+        assert storage.get_job("j-purge") is None

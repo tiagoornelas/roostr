@@ -30,7 +30,8 @@ Provide a comprehensive, non-interactive CLI interface covering all core domain 
 3. **Folder Management Subcommands (`roostr folder ...`)**:
    - `list`: List existing 1st and 2nd level folders.
    - `create <name>`: Create a folder.
-   - `delete <name>`: Delete an empty folder.
+   - `edit <old_name> <new_name>` (alias `rename`): Rename an existing folder, cascading to subfolders and jobs.
+   - `delete <name>`: Delete a folder (supports `--force` to ungroup jobs or `--delete-jobs` to delete contents).
 
 4. **History Subcommand (`roostr history [job_id]`)**:
    - List recent execution records, statuses, and durations with optional `--json` output.

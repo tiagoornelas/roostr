@@ -72,8 +72,15 @@ class ManageJobsUseCase:
     def create_folder(self, folder: str) -> str:
         return self.storage.save_folder(folder)
 
-    def delete_folder(self, folder: str) -> None:
-        self.storage.delete_folder(folder)
+    def rename_folder(self, old_name: str, new_name: str) -> str:
+        return self.storage.rename_folder(old_name, new_name)
+
+    def delete_folder(self, folder: str, force: bool = False, delete_jobs: bool = False) -> None:
+        if delete_jobs and self.scheduler:
+            jobs = self.list_jobs(folder=folder)
+            for j in jobs:
+                self.scheduler.uninstall(j.id)
+        self.storage.delete_folder(folder, force=force, delete_jobs=delete_jobs)
 
     def list_folders(self) -> list[str]:
         return self.storage.list_folders()

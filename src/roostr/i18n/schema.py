@@ -37,6 +37,7 @@ class Messages:
     folder_actions_title: str
     folder_action_move: str
     folder_action_create: str
+    folder_action_edit: str
     folder_action_delete: str
 
     # Inspector Property Labels
@@ -86,6 +87,11 @@ class Messages:
     tab_target_env: str
     modal_title_move: str
     modal_title_new_folder: str
+    modal_title_edit_folder: str
+    modal_title_delete_folder: str
+    msg_confirm_delete_folder_with_jobs: str
+    btn_ungroup_jobs: str
+    btn_delete_jobs: str
     lbl_no_folder_root: str
     lbl_create_new_folder_option: str
     lbl_job_id: str
@@ -201,6 +207,7 @@ class Messages:
     msg_error_saving_job: str
     msg_error_moving_job: str
     msg_error_creating_folder: str
+    msg_error_renaming_folder: str
     msg_theme_changed: str
     msg_language_changed: str
     notify_success_created: str
@@ -212,4 +219,6 @@ class Messages:
     notify_no_selection: str
     notify_moved: str
     notify_folder_created: str
+    notify_folder_renamed: str
     notify_folder_deleted: str
+    notify_folder_and_jobs_deleted: str
