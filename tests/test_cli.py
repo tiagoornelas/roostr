@@ -193,6 +193,29 @@ def test_cli_daemon_install_and_uninstall_failures():
         assert "Failed to uninstall Roostr daemon" in res.output
 
 
+def test_cli_daemon_commands_linux(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    runner = CliRunner()
+
+    with patch("roostr.infrastructure.systemd.SystemdUserServiceAdapter.is_running", return_value=True):
+        res = runner.invoke(main, ["daemon", "status"])
+        assert res.exit_code == 0
+        assert "loaded in systemd" in res.output
+
+    with patch("roostr.infrastructure.systemd.SystemdUserServiceAdapter.install") as mock_install:
+        mock_install.return_value = tmp_path / "roostr.service"
+        res = runner.invoke(main, ["daemon", "install"])
+        assert res.exit_code == 0
+        assert "systemd" in res.output
+
+    with patch("roostr.infrastructure.systemd.SystemdUserServiceAdapter.uninstall"):
+        res = runner.invoke(main, ["daemon", "uninstall"])
+        assert res.exit_code == 0
+        assert "unloaded and uninstalled" in res.output
+
+
 def test_main_entrypoint(monkeypatch):
     import runpy
 

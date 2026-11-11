@@ -25,3 +25,23 @@ class MacNotifierAdapter(NotificationPort):
             )
         except Exception:
             pass
+
+
+class LinuxNotifierAdapter(NotificationPort):
+    def __init__(
+        self,
+        cmd_runner: Callable[[list[str]], subprocess.CompletedProcess] | None = None,
+    ):
+        self._cmd_runner = cmd_runner or subprocess.run
+
+    def notify(self, title: str, message: str) -> None:
+        try:
+            self._cmd_runner(
+                ["notify-send", title, message],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except Exception:
+            pass

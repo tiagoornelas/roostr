@@ -76,7 +76,7 @@ def main(ctx: click.Context, locale: str | None, theme: str | None, db: Path | N
     ctx.obj["theme"] = theme
 
     if ctx.invoked_subcommand is None:
-        from roostr.infrastructure.launchd import LaunchdServiceAdapter
+        from roostr.infrastructure.platform import get_default_daemon_service
         from roostr.ui.app import RoostrApp
 
         storage = SQLiteStorage(db) if db else get_default_storage()
@@ -84,7 +84,10 @@ def main(ctx: click.Context, locale: str | None, theme: str | None, db: Path | N
         saved_theme = storage.get_setting("theme", "night")
         effective_locale = locale or saved_locale or "en"
         effective_theme = theme or saved_theme or "night"
-        daemon_svc = LaunchdServiceAdapter()
+        try:
+            daemon_svc = get_default_daemon_service()
+        except Exception:
+            daemon_svc = None
         app = RoostrApp(
             storage=storage,
             locale=effective_locale,
@@ -941,13 +944,14 @@ def daemon_tick(ctx: click.Context, db: Path | None) -> None:
 
 @daemon.command(name="install")
 def daemon_install() -> None:
-    """Install and load the background daemon LaunchAgent."""
-    from roostr.infrastructure.launchd import LaunchdServiceAdapter
+    """Install and load the background daemon service (launchd on macOS, systemd on Linux)."""
+    from roostr.infrastructure.platform import get_default_daemon_service, is_macos
 
-    adapter = LaunchdServiceAdapter()
     try:
-        plist_path = adapter.install()
-        click.echo(f"✓ Roostr daemon installed and loaded at {plist_path}")
+        adapter = get_default_daemon_service()
+        unit_path = adapter.install()
+        service_kind = "launchd" if is_macos() else "systemd"
+        click.echo(f"✓ Roostr daemon installed and loaded at {unit_path} ({service_kind})")
     except Exception as e:
         click.echo(f"✗ Failed to install Roostr daemon: {e}", err=True)
         sys.exit(1)
@@ -955,11 +959,11 @@ def daemon_install() -> None:
 
 @daemon.command(name="uninstall")
 def daemon_uninstall() -> None:
-    """Unload and remove the background daemon LaunchAgent."""
-    from roostr.infrastructure.launchd import LaunchdServiceAdapter
+    """Unload and remove the background daemon service."""
+    from roostr.infrastructure.platform import get_default_daemon_service
 
-    adapter = LaunchdServiceAdapter()
     try:
+        adapter = get_default_daemon_service()
         adapter.uninstall()
         click.echo("✓ Roostr daemon unloaded and uninstalled.")
     except Exception as e:
@@ -969,14 +973,19 @@ def daemon_uninstall() -> None:
 
 @daemon.command(name="status")
 def daemon_status() -> None:
-    """Check the status of the background daemon LaunchAgent."""
-    from roostr.infrastructure.launchd import LaunchdServiceAdapter
+    """Check the status of the background daemon service."""
+    from roostr.infrastructure.platform import get_default_daemon_service, is_macos
 
-    adapter = LaunchdServiceAdapter()
-    if adapter.is_running():
-        click.echo("● Roostr daemon is running (loaded in launchd).")
-    else:
-        click.echo("○ Roostr daemon is stopped (not loaded in launchd).")
+    try:
+        adapter = get_default_daemon_service()
+        service_kind = "launchd" if is_macos() else "systemd"
+        if adapter.is_running():
+            click.echo(f"● Roostr daemon is running (loaded in {service_kind}).")
+        else:
+            click.echo(f"○ Roostr daemon is stopped (not loaded in {service_kind}).")
+    except Exception as e:
+        click.echo(f"✗ Failed to check daemon status: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

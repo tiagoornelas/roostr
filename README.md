@@ -29,9 +29,9 @@ Many of us just want to keep things **simple, local, and running straight inside
 - **Roostr 🐓** is the rooster that crows at dawn: waking up your autonomous coding routines right on schedule.
 - **Herdr 🐕** is the shepherd: herding active agents into organized workspace tabs where you can visually inspect them.
 
-### Why not just traditional `cron` or raw `launchd`?
-- **Mac Sleep & Lid-Close Tolerance:** Standard `cron` fails silently if your MacBook is asleep at 08:30. Roostr's smart tolerance window catches up automatically the moment you open your laptop.
-- **Native macOS `launchd` without XML headaches:** Roostr registers directly with macOS `launchd` under the hood. No manual `.plist` editing, no root daemon requirements, and zero background Python processes eating CPU when idle.
+### Why not just traditional `cron` or raw daemons?
+- **Mac Sleep & Lid-Close Tolerance:** Standard `cron` fails silently if your laptop is asleep at 08:30. Roostr's smart tolerance window catches up automatically the moment you open your machine.
+- **Native OS Scheduling (`launchd` & `systemd --user`):** Roostr registers directly with macOS `launchd` or Linux `systemd --user` under the hood. No manual `.plist` or unit editing, no root daemon requirements, and zero background Python processes eating CPU when idle.
 - **Visual Terminal Inspections:** Rather than sending output into `/dev/null` or forgotten log dumps, Roostr dispatches routines straight into [Herdr](https://github.com/herdrdev/herdr) agent tabs, interactive terminal windows, or desktop-notified background runs.
 
 ---
@@ -40,7 +40,7 @@ Many of us just want to keep things **simple, local, and running straight inside
 
 - **Ridiculously Simple & Local-First:**
   - Installs as a single lightweight CLI tool (`roostr`).
-  - Native macOS `launchd` integration — zero third-party background services or Docker daemons.
+  - Native macOS `launchd` and Linux `systemd --user` integration — zero third-party background services or Docker daemons.
   - Powered by embedded SQLite (WAL mode) for rock-solid local persistence and idempotency.
 
 - **Dual First-Class Interfaces (TUI & CLI Parity):**

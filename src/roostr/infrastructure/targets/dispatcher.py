@@ -3,9 +3,9 @@ from datetime import datetime
 from roostr.application.ports import ExecutionTargetPort
 from roostr.domain.enums import TargetType
 from roostr.domain.models import Job
+from roostr.infrastructure.platform import get_default_terminal_target_adapter
 from roostr.infrastructure.targets.background import BackgroundTargetAdapter
 from roostr.infrastructure.targets.herdr import HerdrTargetAdapter
-from roostr.infrastructure.targets.terminal import TerminalTargetAdapter
 
 
 class TargetDispatcher:
@@ -15,7 +15,7 @@ class TargetDispatcher:
         herdr_adapter: ExecutionTargetPort | None = None,
         background_adapter: ExecutionTargetPort | None = None,
     ):
-        self.terminal_adapter = terminal_adapter or TerminalTargetAdapter()
+        self.terminal_adapter = terminal_adapter or get_default_terminal_target_adapter()
         self.herdr_adapter = herdr_adapter or HerdrTargetAdapter()
         self.background_adapter = background_adapter or BackgroundTargetAdapter()
 

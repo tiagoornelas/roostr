@@ -89,9 +89,9 @@ class RoostrApp(App):
             self.daemon_service = daemon_service
         elif "pytest" not in sys.modules:
             try:
-                from roostr.infrastructure.launchd import LaunchdServiceAdapter
+                from roostr.infrastructure.platform import get_default_daemon_service
 
-                self.daemon_service = LaunchdServiceAdapter()
+                self.daemon_service = get_default_daemon_service()
             except Exception:
                 self.daemon_service = None
         else:

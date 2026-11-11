@@ -49,3 +49,4 @@ Anything else — a new decision, a reversal, a widened contract — is a **new 
 | --- | ------------------------------------------------------------------------------------------------------- | -------- | ---------- |
 | 001 | [Clean Architecture and Local-First Foundation](./001-clean-architecture-and-local-first.md)             | accepted | 2026-11-08 |
 | 002 | [AI-Accessible CLI Interface for Autonomous Manipulation](./002-ai-accessible-cli-interface.md)        | accepted | 2026-11-11 |
+| 003 | [Linux and Multiplatform Daemon Architecture](./003-linux-and-multiplatform-support.md)                 | accepted | 2026-11-11 |

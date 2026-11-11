@@ -3,7 +3,7 @@ from datetime import datetime
 from roostr.application.ports import JobRepositoryPort, NotificationPort
 from roostr.domain.enums import ExecutionStatus, ScheduleFrequency, TriggerType
 from roostr.domain.models import ExecutionRecord
-from roostr.infrastructure.notifier import MacNotifierAdapter
+from roostr.infrastructure.platform import get_default_notifier
 from roostr.infrastructure.targets.dispatcher import TargetDispatcher
 
 
@@ -16,7 +16,7 @@ class ExecuteJobUseCase:
     ):
         self.storage = storage
         self.dispatcher = dispatcher or TargetDispatcher()
-        self.notifier = notifier or MacNotifierAdapter()
+        self.notifier = notifier or get_default_notifier()
 
     def execute(
         self,

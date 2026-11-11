@@ -6,6 +6,7 @@ from pathlib import Path
 
 from roostr.application.ports import ExecutionTargetPort
 from roostr.domain.models import Job
+from roostr.infrastructure.platform import get_default_shell
 
 DEFAULT_LOGS_DIR = Path.home() / ".local" / "state" / "roostr" / "logs"
 
@@ -26,10 +27,11 @@ class BackgroundTargetAdapter(ExecutionTargetPort):
         cmd = f"cd {quoted_cwd} && {job.command}"
 
         try:
+            shell_bin = get_default_shell()
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"\n=== [roostr] Started at {dt.isoformat()} ===\n")
                 process = self._popen_fn(
-                    ["zsh", "-lic", cmd],
+                    [shell_bin, "-lic", cmd],
                     stdout=f,
                     stderr=f,
                     start_new_session=True,
