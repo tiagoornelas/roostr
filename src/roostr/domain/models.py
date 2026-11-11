@@ -194,6 +194,7 @@ class TerminalTargetConfig:
 class HerdrTargetConfig:
     space: str
     tab_template: str = "{job.name} {DD}/{MM}"
+    keep_open: bool = True
     target_type: TargetType = field(default=TargetType.HERDR, init=False)
 
 
@@ -396,6 +397,7 @@ class Job:
         elif isinstance(self.target, HerdrTargetConfig):
             target_info["space"] = self.target.space
             target_info["tab_template"] = self.target.tab_template
+            target_info["keep_open"] = self.target.keep_open
         elif isinstance(self.target, BackgroundTargetConfig):
             target_info["notify_on_complete"] = self.target.notify_on_complete
 

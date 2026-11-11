@@ -148,6 +148,57 @@ def test_herdr_adapter_creates_space_if_missing(herdr_job):
     assert any("space.new" in c for c in calls)
 
 
+def test_herdr_adapter_keep_open_command(herdr_job):
+    import json
+
+    calls = []
+
+    def mock_runner(cmd, **kwargs):
+        calls.append(cmd)
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        if cmd == ["hc", "server", "status"]:
+            return mock_res
+        if cmd == ["herdr-app", "ls"]:
+            mock_res.stdout = json.dumps(
+                {
+                    "spaces": [
+                        {
+                            "name": "Roostr",
+                            "id": "sp_roostr",
+                            "tabs": [{"terminals": [{"name": "daily-report-20261109-080000"}]}],
+                        }
+                    ]
+                }
+            )
+            return mock_res
+        if len(cmd) > 1 and cmd[0] == "hc" and cmd[1] == "run":
+            mock_res.stdout = json.dumps({"terminal": "t1"})
+            return mock_res
+        return mock_res
+
+    adapter = HerdrTargetAdapter(cmd_runner=mock_runner, sleep_fn=lambda _: None)
+
+    # 1. Default keep_open is True: command uses eval "$@"; exec "$0" -li pattern
+    herdr_job.target.keep_open = True
+    adapter.launch(herdr_job, datetime(2026, 11, 9, 8, 0, 0))
+    hc_calls = [c for c in calls if len(c) > 1 and c[0] == "hc" and c[1] == "run"]
+    assert len(hc_calls) == 1
+    hc_cmd = hc_calls[0]
+    expected_tail = ["env", "TERM=xterm-256color", "zsh", "-lic", 'eval "$@"; exec "$0" -li', "zsh", herdr_job.command]
+    assert hc_cmd[-len(expected_tail) :] == expected_tail
+
+    # 2. keep_open is False: command exits directly with job.command
+    calls.clear()
+    herdr_job.target.keep_open = False
+    adapter.launch(herdr_job, datetime(2026, 11, 9, 8, 0, 0))
+    hc_calls = [c for c in calls if len(c) > 1 and c[0] == "hc" and c[1] == "run"]
+    assert len(hc_calls) == 1
+    hc_cmd = hc_calls[0]
+    expected_tail_no_keep = ["env", "TERM=xterm-256color", "zsh", "-lic", herdr_job.command]
+    assert hc_cmd[-len(expected_tail_no_keep) :] == expected_tail_no_keep
+
+
 def test_background_adapter_spawns_process(background_job, tmp_path):
     logs_dir = tmp_path / "logs"
     popen_mock = MagicMock()

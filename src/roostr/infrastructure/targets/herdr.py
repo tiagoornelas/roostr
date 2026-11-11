@@ -167,6 +167,26 @@ class HerdrTargetAdapter(ExecutionTargetPort):
 
         terminal_name = make_herdr_terminal_name(job.id, dt)
 
+        keep_open = getattr(job.target, "keep_open", True)
+        if keep_open:
+            cmd_args = [
+                "env",
+                "TERM=xterm-256color",
+                "zsh",
+                "-lic",
+                'eval "$@"; exec "$0" -li',
+                "zsh",
+                job.command,
+            ]
+        else:
+            cmd_args = [
+                "env",
+                "TERM=xterm-256color",
+                "zsh",
+                "-lic",
+                job.command,
+            ]
+
         hc_cmd = [
             "hc",
             "run",
@@ -180,11 +200,7 @@ class HerdrTargetAdapter(ExecutionTargetPort):
             "--outlive-parent",
             "--label",
             f"herdr.space={space_id}",
-            "env",
-            "TERM=xterm-256color",
-            "zsh",
-            "-lic",
-            job.command,
+            *cmd_args,
         ]
 
         try:

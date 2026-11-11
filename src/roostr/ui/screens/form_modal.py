@@ -739,7 +739,10 @@ class JobFormModal(ModalScreen[Job | None]):
         elif target_type == "herdr":
             space = self.query_one("#inp-herdr-space", Input).value.strip() or "Roostr"
             tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "{job.name} {DD}/{MM}"
-            target = HerdrTargetConfig(space=space, tab_template=tab_template)
+            keep_open = (
+                self.job.target.keep_open if (self.job and isinstance(self.job.target, HerdrTargetConfig)) else True
+            )
+            target = HerdrTargetConfig(space=space, tab_template=tab_template, keep_open=keep_open)
         elif target_type == "background":
             target = BackgroundTargetConfig(notify_on_complete=True)
         else:

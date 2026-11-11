@@ -59,6 +59,27 @@ def test_target_configs():
     herdr_target = HerdrTargetConfig(space="Personal Coordinator", tab_template="Daily {DD}/{MM}")
     assert herdr_target.target_type == TargetType.HERDR
     assert herdr_target.space == "Personal Coordinator"
+    assert herdr_target.keep_open is True
+
+    herdr_target_no_keep = HerdrTargetConfig(space="Roostr", tab_template="Daily", keep_open=False)
+    assert herdr_target_no_keep.keep_open is False
+
+
+def test_job_to_dict_herdr():
+    sched = SchedulePolicy((0, 1, 2, 3, 4), time(8, 0))
+    job = Job(
+        id="herdr-test",
+        name="Herdr Test",
+        cwd="/tmp",
+        command="claude '/test'",
+        schedule=sched,
+        target=HerdrTargetConfig(space="Roostr", tab_template="{job.name}", keep_open=True),
+    )
+    d = job.to_dict()
+    assert d["target"]["type"] == "herdr"
+    assert d["target"]["space"] == "Roostr"
+    assert d["target"]["tab_template"] == "{job.name}"
+    assert d["target"]["keep_open"] is True
 
     bg_target = BackgroundTargetConfig(notify_on_complete=True)
     assert bg_target.target_type == TargetType.BACKGROUND

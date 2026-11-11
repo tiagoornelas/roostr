@@ -310,6 +310,7 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
     if isinstance(job.target, HerdrTargetConfig):
         click.echo(f"  Space:      {job.target.space}")
         click.echo(f"  Tab Name:   {job.target.tab_template}")
+        click.echo(f"  Keep Open:  {job.target.keep_open}")
     elif isinstance(job.target, TerminalTargetConfig):
         click.echo(f"  App:        {job.target.app.value}")
         click.echo(f"  Keep Open:  {job.target.keep_open}")
@@ -450,7 +451,7 @@ def job_create(
     # Resolve Target
     target_type = TargetType(target.lower())
     if target_type == TargetType.HERDR:
-        target_cfg = HerdrTargetConfig(space=space, tab_template=tab_template)
+        target_cfg = HerdrTargetConfig(space=space, tab_template=tab_template, keep_open=keep_open)
     elif target_type == TargetType.TERMINAL:
         target_cfg = TerminalTargetConfig(app=TerminalApp(terminal_app.lower()), keep_open=keep_open)
     else:
@@ -588,6 +589,7 @@ def job_update(
             job.target = HerdrTargetConfig(
                 space=space or "Roostr",
                 tab_template=tab_template or "{job.name} {DD}/{MM}",
+                keep_open=keep_open if keep_open is not None else True,
             )
         elif t_type == TargetType.TERMINAL:
             job.target = TerminalTargetConfig(
@@ -605,6 +607,8 @@ def job_update(
                 job.target.space = space
             if tab_template is not None:
                 job.target.tab_template = tab_template
+            if keep_open is not None:
+                job.target.keep_open = keep_open
         elif isinstance(job.target, TerminalTargetConfig):
             if terminal_app is not None:
                 job.target.app = TerminalApp(terminal_app.lower())

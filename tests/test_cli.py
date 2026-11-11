@@ -284,10 +284,13 @@ def test_cli_job_create_and_show_and_list(tmp_path):
     show_data = json.loads(show_json_res.output)
     assert show_data["id"] == "morning-pr-review"
     assert show_data["action"]["prompt"] == "Review pull requests"
+    assert show_data["target"]["type"] == "herdr"
+    assert show_data["target"]["keep_open"] is True
 
     # Show job (standard visual format)
     show_res = runner.invoke(main, ["--db", str(db_file), "job", "show", "morning-pr-review"])
     assert show_res.exit_code == 0
+    assert "Keep Open:  True" in show_res.output
     assert "Morning PR Review (morning-pr-review)" in show_res.output
     assert "Status:       ACTIVE" in show_res.output
 
@@ -376,6 +379,7 @@ def test_cli_job_pause_resume_update_delete(tmp_path):
             "Audit security",
             "--folder",
             "Security",
+            "--no-keep-open",
             "--json",
         ],
     )
@@ -384,6 +388,7 @@ def test_cli_job_pause_resume_update_delete(tmp_path):
     assert updated_data["name"] == "Security Audit"
     assert updated_data["folder"] == "Security"
     assert updated_data["action"]["prompt"] == "Audit security"
+    assert updated_data["target"]["keep_open"] is False
 
     # Delete with --yes and --json
     del_res = runner.invoke(main, ["--db", str(db_file), "job", "delete", "audit", "--yes", "--json"])
