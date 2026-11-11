@@ -19,8 +19,7 @@ class ManageJobsUseCase:
         if folder is not None:
             clean_folder = folder.strip().strip("/")
             jobs = [
-                j for j in jobs
-                if j.folder == clean_folder or (j.folder and j.folder.startswith(f"{clean_folder}/"))
+                j for j in jobs if j.folder == clean_folder or (j.folder and j.folder.startswith(f"{clean_folder}/"))
             ]
         if is_paused is not None:
             jobs = [j for j in jobs if j.is_paused == is_paused]
@@ -81,4 +80,3 @@ class ManageJobsUseCase:
 
     def get_recent_executions(self, job_id: str | None = None, limit: int = 20) -> list[ExecutionRecord]:
         return self.storage.get_recent_executions(job_id, limit=limit)
-

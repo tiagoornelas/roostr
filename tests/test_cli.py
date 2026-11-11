@@ -24,7 +24,6 @@ def test_cli_help():
     assert "create" in help_topic_res.output
 
 
-
 def test_cli_version():
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
@@ -503,5 +502,3 @@ def test_cli_history_inspection(tmp_path):
     hist_job = runner.invoke(main, ["--db", str(db_file), "history", "test-job"])
     assert hist_job.exit_code == 0
     assert "test-job" in hist_job.output
-
-

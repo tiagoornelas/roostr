@@ -207,9 +207,7 @@ def job_group() -> None:
 @click.option("--json", "json_output", is_flag=True, help="Output jobs as JSON.")
 @click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
 @click.pass_context
-def job_list(
-    ctx: click.Context, folder: str | None, status: str | None, json_output: bool, db: Path | None
-) -> None:
+def job_list(ctx: click.Context, folder: str | None, status: str | None, json_output: bool, db: Path | None) -> None:
     """List configured jobs with schedule and target summaries."""
     storage = get_storage_from_ctx(ctx, db)
     use_case = ManageJobsUseCase(storage=storage)
@@ -575,9 +573,7 @@ def job_update(
     if command is not None:
         job.action = CommandAction(command=command)
     elif prompt is not None or harness is not None:
-        current_harness = (
-            job.action.harness.value if isinstance(job.action, AgentAction) else "claude"
-        )
+        current_harness = job.action.harness.value if isinstance(job.action, AgentAction) else "claude"
         current_prompt = job.action.prompt if isinstance(job.action, AgentAction) else ""
         new_harness = harness or current_harness
         if new_harness.lower() == "agy":
@@ -886,7 +882,6 @@ def help_cmd(ctx: click.Context, topic: str | None) -> None:
     else:
         click.echo(f"Unknown topic or command '{topic}'. Available commands:\n")
         click.echo(root.get_help())
-
 
 
 # ==============================================================================
