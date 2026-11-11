@@ -66,6 +66,27 @@ def test_save_and_retrieve_herdr_job(storage):
     assert isinstance(fetched.target, HerdrTargetConfig)
     assert fetched.target.space == "Roostr"
     assert fetched.target.tab_template == "Daily {DD}/{MM}"
+    assert fetched.target.keep_open is True
+
+    # Job with keep_open=False
+    job_no_keep = Job(
+        id="no-keep-job",
+        name="No Keep Job",
+        cwd="/tmp",
+        command="claude '/audit'",
+        schedule=job.schedule,
+        target=HerdrTargetConfig(space="Roostr", tab_template="Audit", keep_open=False),
+    )
+    storage.save_job(job_no_keep)
+    fetched_no_keep = storage.get_job("no-keep-job")
+    assert fetched_no_keep is not None
+    assert isinstance(fetched_no_keep.target, HerdrTargetConfig)
+    assert fetched_no_keep.target.keep_open is False
+
+    # Backward compatibility: JSON dict without keep_open defaults to True
+    legacy_target = storage._dict_to_target("herdr", {"space": "OldSpace", "tab_template": "OldTab"})
+    assert isinstance(legacy_target, HerdrTargetConfig)
+    assert legacy_target.keep_open is True
 
 
 def test_save_and_retrieve_agent_action_job(storage):

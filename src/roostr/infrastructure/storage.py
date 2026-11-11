@@ -366,7 +366,11 @@ class SQLiteStorage:
         if isinstance(target, TerminalTargetConfig):
             return {"app": target.app.value, "keep_open": target.keep_open}
         if isinstance(target, HerdrTargetConfig):
-            return {"space": target.space, "tab_template": target.tab_template}
+            return {
+                "space": target.space,
+                "tab_template": target.tab_template,
+                "keep_open": target.keep_open,
+            }
         if isinstance(target, BackgroundTargetConfig):
             return {"notify_on_complete": target.notify_on_complete}
         return {}
@@ -382,6 +386,7 @@ class SQLiteStorage:
             return HerdrTargetConfig(
                 space=config_dict.get("space", ""),
                 tab_template=config_dict.get("tab_template", "{job.name} {DD}/{MM}"),
+                keep_open=bool(config_dict.get("keep_open", True)),
             )
         if target_type == TargetType.BACKGROUND:
             return BackgroundTargetConfig(

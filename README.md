@@ -59,7 +59,7 @@ Many of us just want to keep things **simple, local, and running straight inside
   - **Smart Wakeup Tolerance:** Choose whether missed runs catch up after sleep/power-on (*Catch-up window*) or stay strict (*Exact time only*).
 
 - **Multi-Target Execution:**
-  - 🖥️ **Herdr App:** Default visual target. Spawns tasks in designated spaces with template-based tab names (e.g. `{job.name} {DD}/{MM}`), with 1-click tab jumping.
+  - 🖥️ **Herdr App:** Default visual target. Spawns tasks in designated spaces with template-based tab names (e.g. `{job.name} {DD}/{MM}`), optional interactive shell retention (`keep_open`), and 1-click tab jumping.
   - 💻 **Terminal Emulators:** Launches new windows/tabs in Terminal.app, Ghostty, or iTerm2 with optional interactive shell retention (`keep_open`).
   - 👻 **Background Headless:** Headless process execution with stdout/stderr redirection to log files and desktop notifications.
 
@@ -206,6 +206,7 @@ Roostr compiles prompts directly into standard CLI invocations for your favorite
 Designed for developers managing multi-agent spaces in [Herdr](https://github.com/herdrdev/herdr).
 - Spawns agent tasks in designated spaces.
 - Dynamic tab templates with date interpolation (e.g. `{job.name} {DD}/{MM}`).
+- **Interactive shell retention:** Keeps the workspace tab open as an interactive shell after the command or agent exits (`keep_open: true`).
 - Jump directly to the active agent tab with a single click from the Roostr inspector.
 
 ### 2. Terminal Emulators (`terminal`)
