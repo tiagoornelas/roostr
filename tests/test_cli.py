@@ -97,7 +97,10 @@ def test_cli_setup_herdr():
     assert "Herdr App" in result.output
 
 
-def test_cli_daemon_commands(tmp_path):
+def test_cli_daemon_commands(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "darwin")
     runner = CliRunner()
     db_file = tmp_path / "test.db"
 
@@ -176,7 +179,10 @@ def test_cli_daemon_tick_with_executed_jobs(tmp_path):
         assert "[job1] success: Launched" in res.output
 
 
-def test_cli_daemon_install_and_uninstall_failures():
+def test_cli_daemon_install_and_uninstall_failures(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "darwin")
     runner = CliRunner()
     with patch(
         "roostr.infrastructure.launchd.LaunchdServiceAdapter.install", side_effect=RuntimeError("Permission denied")
@@ -214,6 +220,21 @@ def test_cli_daemon_commands_linux(tmp_path, monkeypatch):
         res = runner.invoke(main, ["daemon", "uninstall"])
         assert res.exit_code == 0
         assert "unloaded and uninstalled" in res.output
+
+    with patch(
+        "roostr.infrastructure.systemd.SystemdUserServiceAdapter.install", side_effect=RuntimeError("Permission denied")
+    ):
+        res = runner.invoke(main, ["daemon", "install"])
+        assert res.exit_code == 1
+        assert "Failed to install Roostr daemon" in res.output
+
+    with patch(
+        "roostr.infrastructure.systemd.SystemdUserServiceAdapter.uninstall",
+        side_effect=RuntimeError("Permission denied"),
+    ):
+        res = runner.invoke(main, ["daemon", "uninstall"])
+        assert res.exit_code == 1
+        assert "Failed to uninstall Roostr daemon" in res.output
 
 
 def test_main_entrypoint(monkeypatch):
