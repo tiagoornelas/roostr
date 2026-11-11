@@ -25,10 +25,12 @@ def test_cli_help():
 
 
 def test_cli_version():
+    from roostr import __version__
+
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
-    assert "roostr 0.1.0" in result.output
+    assert f"roostr {__version__}" in result.output
 
 
 def test_cli_run_help():
