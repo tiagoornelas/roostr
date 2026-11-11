@@ -864,6 +864,32 @@ def setup_herdr() -> None:
 
 
 # ==============================================================================
+# Help Command (`roostr help [topic]`)
+# ==============================================================================
+
+
+@main.command(name="help")
+@click.argument("topic", required=False, default=None)
+@click.pass_context
+def help_cmd(ctx: click.Context, topic: str | None) -> None:
+    """Show help for Roostr commands or a specific topic (e.g. roostr help job)."""
+    root = ctx.find_root()
+    if not topic:
+        click.echo(root.get_help())
+        return
+
+    # Check if topic is a command/group
+    cmd = root.command.get_command(root, topic)
+    if cmd:
+        with click.Context(cmd, parent=root, info_name=topic) as sub_ctx:
+            click.echo(cmd.get_help(sub_ctx))
+    else:
+        click.echo(f"Unknown topic or command '{topic}'. Available commands:\n")
+        click.echo(root.get_help())
+
+
+
+# ==============================================================================
 # Daemon Management Commands
 # ==============================================================================
 

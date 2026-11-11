@@ -14,6 +14,16 @@ def test_cli_help():
     assert "--locale" in result.output
     assert "--theme" in result.output
 
+    # Subcommand help
+    help_cmd_res = runner.invoke(main, ["help"])
+    assert help_cmd_res.exit_code == 0
+    assert "job" in help_cmd_res.output
+
+    help_topic_res = runner.invoke(main, ["help", "job"])
+    assert help_topic_res.exit_code == 0
+    assert "create" in help_topic_res.output
+
+
 
 def test_cli_version():
     runner = CliRunner()
