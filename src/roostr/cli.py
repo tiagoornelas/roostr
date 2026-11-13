@@ -24,6 +24,7 @@ from roostr.domain.models import (
     Job,
     SchedulePolicy,
     TerminalTargetConfig,
+    parse_datetime_string,
     parse_days_of_week,
     parse_time_string,
     parse_times_list,
@@ -207,10 +208,32 @@ def job_group() -> None:
     default=None,
     help="Filter jobs by activation status.",
 )
+@click.option(
+    "--type",
+    "job_type",
+    type=click.Choice(["all", "recurring", "once"], case_sensitive=False),
+    default="all",
+    help="Filter jobs by schedule type (all, recurring, once).",
+)
+@click.option(
+    "--state",
+    "one_time_state",
+    type=click.Choice(["all", "scheduled", "executed"], case_sensitive=False),
+    default="all",
+    help="Filter one-time jobs by execution state (all, scheduled, executed).",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output jobs as JSON.")
 @click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
 @click.pass_context
-def job_list(ctx: click.Context, folder: str | None, status: str | None, json_output: bool, db: Path | None) -> None:
+def job_list(
+    ctx: click.Context,
+    folder: str | None,
+    status: str | None,
+    job_type: str,
+    one_time_state: str,
+    json_output: bool,
+    db: Path | None,
+) -> None:
     """List configured jobs with schedule and target summaries."""
     storage = get_storage_from_ctx(ctx, db)
     use_case = ManageJobsUseCase(storage=storage)
@@ -219,10 +242,24 @@ def job_list(ctx: click.Context, folder: str | None, status: str | None, json_ou
     if status:
         is_paused = status.lower() == "paused"
 
-    jobs = use_case.list_jobs(folder=folder, is_paused=is_paused)
+    type_filter = None if job_type.lower() == "all" else job_type.lower()
+    state_filter = None if one_time_state.lower() == "all" else one_time_state.lower()
+
+    jobs = use_case.list_jobs(
+        folder=folder,
+        is_paused=is_paused,
+        job_type=type_filter,
+        one_time_state=state_filter,
+    )
+    executed_ids = storage.get_executed_job_ids() if any(j.schedule.is_one_time for j in jobs) else set()
 
     if json_output:
-        payload = [j.to_dict() for j in jobs]
+        payload = []
+        for j in jobs:
+            d = j.to_dict()
+            if j.schedule.is_one_time:
+                d["one_time_state"] = use_case.get_one_time_state(j, executed_ids)
+            payload.append(d)
         click.echo(json.dumps(payload, indent=2))
         return
 
@@ -234,7 +271,11 @@ def job_list(ctx: click.Context, folder: str | None, status: str | None, json_ou
     click.echo(f"{'ID':<24} {'NAME':<28} {'SCHEDULE':<24} {'TARGET':<16} {'STATUS':<10} {'FOLDER'}")
     click.echo("-" * 115)
     for j in jobs:
-        stat_str = "PAUSED" if j.is_paused else "ACTIVE"
+        if j.schedule.is_one_time:
+            ot_state = use_case.get_one_time_state(j, executed_ids)
+            stat_str = ot_state.upper()
+        else:
+            stat_str = "PAUSED" if j.is_paused else "ACTIVE"
         folder_str = j.folder or "-"
         target_str = j.target.target_type.value
         if isinstance(j.target, HerdrTargetConfig) and j.target.space:
@@ -242,7 +283,9 @@ def job_list(ctx: click.Context, folder: str | None, status: str | None, json_ou
         elif isinstance(j.target, TerminalTargetConfig):
             target_str = f"terminal/{j.target.app.value}"
 
-        if j.schedule.frequency == ScheduleFrequency.DAILY:
+        if j.schedule.frequency == ScheduleFrequency.ONCE and j.schedule.run_at is not None:
+            sched_str = f"once {j.schedule.run_at.strftime('%Y-%m-%d %H:%M')}"
+        elif j.schedule.frequency == ScheduleFrequency.DAILY:
             times = ",".join(t.strftime("%H:%M") for t in j.schedule.times_of_day)
             sched_str = f"daily at {times}"
         else:
@@ -272,6 +315,8 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
 
     if json_output:
         data = job.to_dict()
+        if job.schedule.is_one_time:
+            data["one_time_state"] = use_case.get_one_time_state(job)
         data["last_execution"] = last_exec.to_dict() if last_exec else None
         click.echo(json.dumps(data, indent=2))
         return
@@ -296,12 +341,16 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
     click.echo()
     click.echo("Schedule:")
     click.echo(f"  Frequency:  {job.schedule.frequency.value}")
-    if job.schedule.frequency == ScheduleFrequency.DAILY:
+    if job.schedule.frequency == ScheduleFrequency.ONCE and job.schedule.run_at is not None:
+        click.echo(f"  Run At:     {job.schedule.run_at.strftime('%Y-%m-%d %H:%M')}")
+        click.echo(f"  State:      {use_case.get_one_time_state(job).upper()}")
+    elif job.schedule.frequency == ScheduleFrequency.DAILY:
         times_str = ", ".join(t.strftime("%H:%M") for t in job.schedule.times_of_day)
         click.echo(f"  Times:      {times_str}")
+        click.echo(f"  Days:       {days_str}")
     else:
         click.echo(f"  Interval:   {job.schedule.interval_value}")
-    click.echo(f"  Days:       {days_str}")
+        click.echo(f"  Days:       {days_str}")
     click.echo(f"  Tolerance:  {job.schedule.tolerance_mode.value} (value: {job.schedule.tolerance_value})")
     if job.schedule.start_time or job.schedule.end_time:
         st = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else "start of day"
@@ -352,10 +401,11 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
 @click.option("--times", "-t", default="08:00", help="Comma-separated times (e.g. 08:00, 7am,2:30pm).")
 @click.option(
     "--frequency",
-    type=click.Choice(["daily", "interval_hours", "interval_minutes"], case_sensitive=False),
+    type=click.Choice(["daily", "interval_hours", "interval_minutes", "once"], case_sensitive=False),
     default="daily",
     help="Schedule frequency (default: daily).",
 )
+@click.option("--at", "run_at", default=None, help="One-time target datetime (e.g. '2026-11-15 14:30').")
 @click.option("--interval", type=int, default=1, help="Interval step value if interval frequency.")
 @click.option("--days", default="all", help="Active days (e.g. mon,tue,wed or all, weekdays).")
 @click.option(
@@ -393,6 +443,7 @@ def job_create(
     custom_id: str | None,
     times: str,
     frequency: str,
+    run_at: str | None,
     interval: int,
     days: str,
     tolerance: str,
@@ -434,7 +485,21 @@ def job_create(
         action = AgentAction(harness=AIHarness(harness_key), prompt=prompt)
 
     # Resolve Schedule
-    days_tuple = parse_days_of_week(days)
+    eff_freq = (
+        ScheduleFrequency.ONCE if run_at and frequency.lower() == "daily" else ScheduleFrequency(frequency.lower())
+    )
+    parsed_run_at = None
+    if eff_freq == ScheduleFrequency.ONCE:
+        if not run_at:
+            click.echo("Error: --at is required when --frequency is 'once'.", err=True)
+            sys.exit(1)
+        try:
+            parsed_run_at = parse_datetime_string(run_at)
+        except ValueError as e:
+            click.echo(f"Error: Invalid --at datetime '{run_at}': {e}", err=True)
+            sys.exit(1)
+
+    days_tuple = () if eff_freq == ScheduleFrequency.ONCE else parse_days_of_week(days)
     times_tuple = parse_times_list(times)
     parsed_start = parse_time_string(start_time) if start_time else None
     parsed_end = parse_time_string(end_time) if end_time else None
@@ -443,12 +508,13 @@ def job_create(
         days_of_week=days_tuple,
         times_of_day=times_tuple,
         time_of_day=times_tuple[0] if times_tuple else time(8, 0),
-        frequency=ScheduleFrequency(frequency.lower()),
+        frequency=eff_freq,
         interval_value=interval,
         tolerance_mode=ToleranceMode(tolerance.lower()),
         tolerance_value=tolerance_value,
         start_time=parsed_start,
         end_time=parsed_end,
+        run_at=parsed_run_at,
     )
 
     # Resolve Target
@@ -501,10 +567,11 @@ def job_create(
 @click.option("--times", "-t", default=None, help="Updated comma-separated times.")
 @click.option(
     "--frequency",
-    type=click.Choice(["daily", "interval_hours", "interval_minutes"], case_sensitive=False),
+    type=click.Choice(["daily", "interval_hours", "interval_minutes", "once"], case_sensitive=False),
     default=None,
     help="Updated schedule frequency.",
 )
+@click.option("--at", "run_at", default=None, help="Updated one-time target datetime (e.g. '2026-11-15 14:30').")
 @click.option("--interval", type=int, default=None, help="Updated interval step value.")
 @click.option("--days", default=None, help="Updated active days.")
 @click.option(
@@ -539,6 +606,7 @@ def job_update(
     folder: str | None,
     times: str | None,
     frequency: str | None,
+    run_at: str | None,
     interval: int | None,
     days: str | None,
     tolerance: str | None,
@@ -621,20 +689,39 @@ def job_update(
             if notify is not None:
                 job.target.notify_on_complete = notify
 
-    # Update Schedule
-    if times is not None:
-        job.schedule.times_of_day = parse_times_list(times)
-        job.schedule.time_of_day = job.schedule.times_of_day[0]
-    if days is not None:
-        job.schedule.days_of_week = parse_days_of_week(days)
-    if frequency is not None:
-        job.schedule.frequency = ScheduleFrequency(frequency.lower())
-    if interval is not None:
-        job.schedule.interval_value = interval
-    if tolerance is not None:
-        job.schedule.tolerance_mode = ToleranceMode(tolerance.lower())
-    if tolerance_value is not None:
-        job.schedule.tolerance_value = tolerance_value
+    # Update Schedule (reconstruct SchedulePolicy to enforce invariants)
+    new_times = parse_times_list(times) if times is not None else job.schedule.times_of_day
+    new_days = parse_days_of_week(days) if days is not None else job.schedule.days_of_week
+    new_freq = ScheduleFrequency(frequency.lower()) if frequency is not None else job.schedule.frequency
+    new_interval = interval if interval is not None else job.schedule.interval_value
+    new_tol_mode = ToleranceMode(tolerance.lower()) if tolerance is not None else job.schedule.tolerance_mode
+    new_tol_val = tolerance_value if tolerance_value is not None else job.schedule.tolerance_value
+    new_run_at = job.schedule.run_at
+    if run_at is not None:
+        try:
+            new_run_at = parse_datetime_string(run_at)
+        except ValueError as e:
+            click.echo(f"Error: Invalid --at datetime '{run_at}': {e}", err=True)
+            sys.exit(1)
+        if frequency is None:
+            new_freq = ScheduleFrequency.ONCE
+
+    try:
+        job.schedule = SchedulePolicy(
+            days_of_week=new_days,
+            time_of_day=new_times[0] if new_times else job.schedule.time_of_day,
+            times_of_day=new_times,
+            tolerance_mode=new_tol_mode,
+            tolerance_value=new_tol_val,
+            frequency=new_freq,
+            interval_value=new_interval,
+            start_time=job.schedule.start_time,
+            end_time=job.schedule.end_time,
+            run_at=new_run_at,
+        )
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
     use_case.update_job(job)
 
@@ -642,6 +729,45 @@ def job_update(
         click.echo(json.dumps(job.to_dict(), indent=2))
     else:
         click.echo(f"✓ Updated job '{job.name}' ({job.id})")
+
+
+@job_group.command(name="clone")
+@click.argument("job_id")
+@click.option("--at", "run_at", default=None, help="New target datetime for cloned job (e.g. '2026-11-15 14:30').")
+@click.option("--name", "-n", default=None, help="Optional new name for the cloned job.")
+@click.option("--json", "json_output", is_flag=True, help="Output cloned job as JSON.")
+@click.option("--db", type=click.Path(path_type=Path), default=None, help="Custom path to SQLite database.")
+@click.pass_context
+def job_clone(
+    ctx: click.Context,
+    job_id: str,
+    run_at: str | None,
+    name: str | None,
+    json_output: bool,
+    db: Path | None,
+) -> None:
+    """Clone an existing job (useful to reschedule an executed one-time job)."""
+    storage = get_storage_from_ctx(ctx, db)
+    use_case = ManageJobsUseCase(storage=storage)
+
+    parsed_run_at = None
+    if run_at is not None:
+        try:
+            parsed_run_at = parse_datetime_string(run_at)
+        except ValueError as e:
+            click.echo(f"Error: Invalid --at datetime '{run_at}': {e}", err=True)
+            sys.exit(1)
+
+    try:
+        cloned = use_case.clone_job(job_id, run_at=parsed_run_at, name=name)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    if json_output:
+        click.echo(json.dumps(cloned.to_dict(), indent=2))
+    else:
+        click.echo(f"✓ Cloned job '{cloned.name}' (id: {cloned.id})")
 
 
 @job_group.command(name="pause")

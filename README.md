@@ -55,6 +55,7 @@ Many of us just want to keep things **simple, local, and running straight inside
 
 - **Flexible Scheduling Possibilities:**
   - **Multiple Daily Runs:** Schedule specific times freely (e.g. `Monday to Friday at 7am, 9:30 am, 2:30 pm, 6 pm`).
+  - **One-Time Jobs:** Schedule a single date and time (`--at "YYYY-MM-DD HH:MM"`) in a dedicated **One-Time** tab that separates pending jobs from executed history.
   - **Intervals with Active Windows:** Run every `X` hours or minutes, bounded by first and last daily call limits (e.g. `every 30m between 09:00 and 18:00`).
   - **Smart Wakeup Tolerance:** Choose whether missed runs catch up after sleep/power-on (*Catch-up window*) or stay strict (*Exact time only*).
 
@@ -155,6 +156,10 @@ roostr job create \
   --folder "Work/Daily" \
   --json
 
+# Create a one-time job and clone/reschedule it later
+roostr job create --name "Release Check" --prompt "Verify release notes" --at "2026-11-20 18:00" --json
+roostr job clone release-check --at "2026-11-21 09:00" --json
+
 # Inspect job details and execution history
 roostr job show <job_id> --json
 roostr history <job_id> --json
@@ -233,8 +238,10 @@ Silent headless runner for automated background audits, cron tasks, or headless 
 
 | Key | Action | Description |
 | :---: | :--- | :--- |
+| `Tab` | **Switch Tab** | Switches between Recurring and One-Time job views |
 | `n` | **New Job** | Opens the responsive tabbed creation modal |
 | `e` | **Edit** | Edits the selected job or renames the focused folder |
+| `c` | **Clone** | Clones or reschedules the selected job without losing history |
 | `r` | **Run Now** | Immediately triggers the selected job |
 | `m` | **Move** | Moves the selected job into a folder or subfolder |
 | `f` | **New Folder** | Creates a new 1st or 2nd level folder |

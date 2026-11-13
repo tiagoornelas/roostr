@@ -50,7 +50,10 @@ class ExecuteJobUseCase:
                 )
 
             # 3. Idempotency check via SQLite
-            if job.schedule.frequency == ScheduleFrequency.DAILY:
+            if job.schedule.frequency == ScheduleFrequency.ONCE:
+                if self.storage.has_terminal_execution(job_id):
+                    return ExecutionStatus.SKIPPED_ALREADY_RAN, "One-time job already executed"
+            elif job.schedule.frequency == ScheduleFrequency.DAILY:
                 if len(job.schedule.times_of_day) <= 1:
                     if self.storage.has_succeeded_on_date(job_id, current_dt.date()):
                         return ExecutionStatus.SKIPPED_ALREADY_RAN, "Already executed successfully today"

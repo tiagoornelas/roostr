@@ -71,7 +71,8 @@ class SQLiteStorage:
                     frequency TEXT NOT NULL DEFAULT 'daily',
                     interval_value INTEGER NOT NULL DEFAULT 1,
                     start_time TEXT,
-                    end_time TEXT
+                    end_time TEXT,
+                    run_at TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS executions (
@@ -115,6 +116,8 @@ class SQLiteStorage:
                 conn.execute("ALTER TABLE jobs ADD COLUMN start_time TEXT")
             if "end_time" not in columns:
                 conn.execute("ALTER TABLE jobs ADD COLUMN end_time TEXT")
+            if "run_at" not in columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN run_at TEXT")
 
             conn.execute(
                 """
@@ -135,6 +138,7 @@ class SQLiteStorage:
         times_str = ",".join(t.strftime("%H:%M") for t in job.schedule.times_of_day)
         start_time_str = job.schedule.start_time.strftime("%H:%M") if job.schedule.start_time else None
         end_time_str = job.schedule.end_time.strftime("%H:%M") if job.schedule.end_time else None
+        run_at_str = job.schedule.run_at.isoformat() if job.schedule.run_at else None
 
         with self._connection() as conn:
             conn.execute(
@@ -143,8 +147,8 @@ class SQLiteStorage:
                     id, name, cwd, command, days_of_week, time_of_day,
                     tolerance_mode, tolerance_value, target_type, target_config,
                     is_paused, created_at, folder, action_type, harness, prompt,
-                    frequency, interval_value, start_time, end_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    frequency, interval_value, start_time, end_time, run_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cwd = excluded.cwd,
@@ -163,7 +167,8 @@ class SQLiteStorage:
                     frequency = excluded.frequency,
                     interval_value = excluded.interval_value,
                     start_time = excluded.start_time,
-                    end_time = excluded.end_time
+                    end_time = excluded.end_time,
+                    run_at = excluded.run_at
                 """,
                 (
                     job.id,
@@ -186,6 +191,7 @@ class SQLiteStorage:
                     interval_value,
                     start_time_str,
                     end_time_str,
+                    run_at_str,
                 ),
             )
 
@@ -433,6 +439,30 @@ class SQLiteStorage:
             ).fetchone()
             return bool(row and row[0] > 0)
 
+    def has_terminal_execution(self, job_id: str) -> bool:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM executions
+                WHERE job_id = ?
+                  AND status IN (?, ?)
+                LIMIT 1
+                """,
+                (job_id, ExecutionStatus.SUCCESS.value, ExecutionStatus.FAILED.value),
+            ).fetchone()
+            return row is not None
+
+    def get_executed_job_ids(self) -> set[str]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT job_id FROM executions
+                WHERE status IN (?, ?)
+                """,
+                (ExecutionStatus.SUCCESS.value, ExecutionStatus.FAILED.value),
+            ).fetchall()
+            return {row[0] for row in rows}
+
     def _target_to_dict(self, target: TargetConfig) -> dict:
         if isinstance(target, TerminalTargetConfig):
             return {"app": target.app.value, "keep_open": target.keep_open}
@@ -474,12 +504,14 @@ class SQLiteStorage:
         )
         start_time = parse_time_string(row["start_time"]) if "start_time" in row.keys() and row["start_time"] else None
         end_time = parse_time_string(row["end_time"]) if "end_time" in row.keys() and row["end_time"] else None
+        run_at = datetime.fromisoformat(row["run_at"]) if "run_at" in row.keys() and row["run_at"] else None
         schedule = SchedulePolicy(
             days_of_week=tuple(json.loads(row["days_of_week"])),
             time_of_day=time_of_day,
             times_of_day=times_of_day,
             start_time=start_time,
             end_time=end_time,
+            run_at=run_at,
             tolerance_mode=ToleranceMode(row["tolerance_mode"]),
             tolerance_value=row["tolerance_value"],
             frequency=ScheduleFrequency(freq_raw),

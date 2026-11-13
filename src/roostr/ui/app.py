@@ -37,8 +37,10 @@ class RoostrApp(App):
     COMMAND_PALETTE_DISPLAY = "^k"
 
     BINDINGS = [
+        Binding("tab", "switch_tab", "Switch Tab", show=True),
         Binding("n", "new_job", "New Job", show=True),
         Binding("e", "edit_job", "Edit", show=True),
+        Binding("c", "clone_job", "Clone", show=True),
         Binding("r", "run_now", "Run Now", show=True),
         Binding("m", "move_job", "Move to Folder", show=True),
         Binding("f", "new_folder", "New Folder", show=True),
@@ -111,10 +113,15 @@ class RoostrApp(App):
     def get_default_screen(self) -> DashboardScreen:
         return self.dashboard_screen
 
+    def action_switch_tab(self) -> None:
+        self.dashboard_screen.switch_view_tab()
+
     def action_new_job(self) -> None:
         def on_modal_result(job: Job | None) -> None:
             if job:
                 try:
+                    if self.storage.get_job(job.id) is not None:
+                        job.id = self.manage_use_case.generate_unique_id(job.name)
                     self.manage_use_case.create_job(job)
                     created_msg = self.msg.notify_success_created.replace("{name}", job.name)
                     self.notify(created_msg, title=self.msg.title_success, severity="information")
@@ -124,7 +131,30 @@ class RoostrApp(App):
                         self.msg.msg_error_saving_job.format(error=e), title=self.msg.title_error, severity="error"
                     )
 
-        self.push_screen(JobFormModal(messages=self.msg), on_modal_result)
+        default_freq = "once" if self.dashboard_screen.active_tab == "onetime" else "daily"
+        self.push_screen(JobFormModal(messages=self.msg, default_frequency=default_freq), on_modal_result)
+
+    def action_clone_job(self) -> None:
+        if not self.dashboard_screen.selected_job:
+            self.notify(self.msg.notify_no_selection, severity="warning")
+            return
+
+        source_job = self.dashboard_screen.selected_job
+
+        def on_modal_result(cloned_job: Job | None) -> None:
+            if cloned_job:
+                try:
+                    cloned_job.id = self.manage_use_case.generate_unique_id(cloned_job.name)
+                    self.manage_use_case.create_job(cloned_job)
+                    created_msg = self.msg.notify_success_created.replace("{name}", cloned_job.name)
+                    self.notify(created_msg, title=self.msg.title_success, severity="information")
+                    self.dashboard_screen.refresh_jobs(selected_job_id=cloned_job.id)
+                except Exception as e:
+                    self.notify(
+                        self.msg.msg_error_saving_job.format(error=e), title=self.msg.title_error, severity="error"
+                    )
+
+        self.push_screen(JobFormModal(job=source_job, messages=self.msg, is_clone=True), on_modal_result)
 
     def action_edit_job(self) -> None:
         focused = self.dashboard_screen.get_current_focused_item()
@@ -317,7 +347,9 @@ class RoostrApp(App):
             "m": self.msg.key_move_job,
             "f": self.msg.key_new_folder,
             "p": self.msg.key_toggle_pause,
+            "tab": self.msg.key_switch_tab,
             "d": self.msg.key_delete_job,
+            "c": self.msg.key_clone_job,
             "s": self.msg.key_settings,
             "q": self.msg.key_quit,
         }

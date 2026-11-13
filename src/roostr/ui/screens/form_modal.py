@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, time
 from pathlib import Path
 
 from textual import events, on
@@ -34,6 +34,7 @@ from roostr.domain.models import (
     SchedulePolicy,
     TargetConfig,
     TerminalTargetConfig,
+    parse_datetime_string,
     parse_time_string,
     parse_times_list,
     slugify,
@@ -250,16 +251,29 @@ class JobFormModal(ModalScreen[Job | None]):
     def action_save(self) -> None:
         self.on_save()
 
-    def __init__(self, job: Job | None = None, messages: Messages | None = None):
+    def __init__(
+        self,
+        job: Job | None = None,
+        messages: Messages | None = None,
+        default_frequency: str = "daily",
+        is_clone: bool = False,
+    ):
         super().__init__()
         self.job = job
+        self.default_frequency = default_frequency
+        self.is_clone = is_clone
         from roostr.i18n.catalog import get_messages
 
         self.msg = messages or get_messages("en")
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form-container"):
-            title = self.msg.modal_title_edit if self.job else self.msg.modal_title_new
+            if self.is_clone:
+                title = self.msg.modal_title_clone
+            elif self.job:
+                title = self.msg.modal_title_edit
+            else:
+                title = self.msg.modal_title_new
             yield Label(title, classes="form-title")
 
             with TabbedContent(id="form-tabs"):
@@ -325,11 +339,36 @@ class JobFormModal(ModalScreen[Job | None]):
                         yield Label(self.msg.lbl_frequency, classes="field-label")
                         freq_options = [
                             (self.msg.freq_opt_daily, "daily"),
+                            (self.msg.freq_opt_once, "once"),
                             (self.msg.freq_opt_interval_hours, "interval_hours"),
                             (self.msg.freq_opt_interval_minutes, "interval_minutes"),
                         ]
-                        initial_freq = self.job.schedule.frequency.value if self.job else "daily"
+                        initial_freq = self.job.schedule.frequency.value if self.job else self.default_frequency
                         yield Select(freq_options, value=initial_freq, id="sel-frequency")
+
+                        with Vertical(id="freq-once-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_run_date, classes="field-label")
+                            initial_run_date = (
+                                self.job.schedule.run_at.strftime("%Y-%m-%d")
+                                if (self.job and self.job.schedule.run_at)
+                                else datetime.now().strftime("%Y-%m-%d")
+                            )
+                            yield Input(
+                                placeholder="YYYY-MM-DD",
+                                id="inp-run-date",
+                                value=initial_run_date,
+                            )
+                            yield Label(self.msg.lbl_run_time, classes="field-label")
+                            initial_run_time = (
+                                self.job.schedule.run_at.strftime("%H:%M")
+                                if (self.job and self.job.schedule.run_at)
+                                else "08:00"
+                            )
+                            yield Input(
+                                placeholder="HH:MM",
+                                id="inp-run-time",
+                                value=initial_run_time,
+                            )
 
                         with Vertical(id="freq-daily-box", classes="freq-box"):
                             yield Label(self.msg.lbl_time, classes="field-label")
@@ -345,6 +384,7 @@ class JobFormModal(ModalScreen[Job | None]):
                             )
                             yield Label(self.msg.lbl_time_hint, classes="field-hint")
 
+                        with Vertical(id="tolerance-box", classes="freq-box"):
                             yield Label(self.msg.lbl_tolerance_section_title, classes="field-label")
                             yield Label(self.msg.lbl_tolerance_explanation, classes="field-hint")
                             tol_options = [
@@ -436,21 +476,26 @@ class JobFormModal(ModalScreen[Job | None]):
                             )
 
                         # ACTIVE DAYS CHECKBOXES (Full width line)
-                        yield Label(self.msg.lbl_days, classes="field-label")
-                        active_days_set = set(self.job.schedule.days_of_week) if self.job else {0, 1, 2, 3, 4}
-                        with Horizontal(id="days-checkbox-row", classes="days-row"):
-                            for day_idx in range(7):
-                                abbr = (
-                                    self.msg.days_names_abbr[day_idx]
-                                    if day_idx < len(self.msg.days_names_abbr)
-                                    else str(day_idx)
-                                )
-                                yield Checkbox(
-                                    abbr,
-                                    value=(day_idx in active_days_set),
-                                    id=f"chk-day-{day_idx}",
-                                    classes="day-checkbox",
-                                )
+                        with Vertical(id="days-box", classes="freq-box"):
+                            yield Label(self.msg.lbl_days, classes="field-label")
+                            active_days_set = (
+                                set(self.job.schedule.days_of_week)
+                                if (self.job and self.job.schedule.days_of_week)
+                                else {0, 1, 2, 3, 4}
+                            )
+                            with Horizontal(id="days-checkbox-row", classes="days-row"):
+                                for day_idx in range(7):
+                                    abbr = (
+                                        self.msg.days_names_abbr[day_idx]
+                                        if day_idx < len(self.msg.days_names_abbr)
+                                        else str(day_idx)
+                                    )
+                                    yield Checkbox(
+                                        abbr,
+                                        value=(day_idx in active_days_set),
+                                        id=f"chk-day-{day_idx}",
+                                        classes="day-checkbox",
+                                    )
 
                 # TAB 3: Target & Environment
                 with TabPane(self.msg.tab_target_env, id="tab-target"):
@@ -556,7 +601,7 @@ class JobFormModal(ModalScreen[Job | None]):
             initial_action = "command"
         self._update_action_visibility(initial_action)
 
-        initial_freq = self.job.schedule.frequency.value if self.job else "daily"
+        initial_freq = self.job.schedule.frequency.value if self.job else self.default_frequency
         self._update_frequency_visibility(initial_freq)
 
         initial_tol = self.job.schedule.tolerance_mode.value if self.job else "until_hour"
@@ -581,10 +626,13 @@ class JobFormModal(ModalScreen[Job | None]):
         self._update_frequency_visibility(str(event.value))
 
     def _update_frequency_visibility(self, freq: str) -> None:
+        self.query_one("#freq-once-box").display = freq == "once"
         self.query_one("#freq-daily-box").display = freq == "daily"
+        self.query_one("#tolerance-box").display = freq in ("daily", "once")
         self.query_one("#freq-hours-box").display = freq == "interval_hours"
         self.query_one("#freq-minutes-box").display = freq == "interval_minutes"
         self.query_one("#freq-interval-window-box").display = freq in ("interval_hours", "interval_minutes")
+        self.query_one("#days-box").display = freq != "once"
 
     @on(Select.Changed, "#sel-tolerance-mode")
     def on_tolerance_mode_changed(self, event: Select.Changed) -> None:
@@ -619,8 +667,8 @@ class JobFormModal(ModalScreen[Job | None]):
         target_type = self.query_one("#sel-target-type", Select).value
         action_type = self.query_one("#sel-action-type", Select).value
 
-        # Infer job id from name using slugify (or keep existing id if editing)
-        job_id = self.job.id if self.job else slugify(name)
+        # Infer job id from name using slugify (or keep existing id if editing without cloning)
+        job_id = self.job.id if (self.job and not self.is_clone) else slugify(name)
 
         if not job_id or not name or not cwd:
             error_label.update(self.msg.err_required_fields)
@@ -645,25 +693,40 @@ class JobFormModal(ModalScreen[Job | None]):
             action = CommandAction(command=cmd_text)
             compiled_command = action.compile()
 
-        # Extract selected days from 7 checkboxes
-        selected_days = tuple(day_idx for day_idx in range(7) if self.query_one(f"#chk-day-{day_idx}", Checkbox).value)
-        if not selected_days:
-            error_label.update(self.msg.err_no_days_selected)
-            return
-
         # Frequency & Schedule resolution
         freq_val = str(self.query_one("#sel-frequency", Select).value)
         frequency = ScheduleFrequency(freq_val)
+
+        if frequency == ScheduleFrequency.ONCE:
+            selected_days: tuple[int, ...] = ()
+        else:
+            selected_days = tuple(
+                day_idx for day_idx in range(7) if self.query_one(f"#chk-day-{day_idx}", Checkbox).value
+            )
+            if not selected_days:
+                error_label.update(self.msg.err_no_days_selected)
+                return
 
         tod = time(8, 0)
         times_of_day = (tod,)
         start_time = None
         end_time = None
+        run_at = None
         tol_mode = ToleranceMode.EXACT
         tol_val = 0
         interval_val = 1
 
-        if frequency == ScheduleFrequency.DAILY:
+        if frequency == ScheduleFrequency.ONCE:
+            date_str = self.query_one("#inp-run-date", Input).value.strip()
+            time_str = self.query_one("#inp-run-time", Input).value.strip()
+            try:
+                run_at = parse_datetime_string(f"{date_str} {time_str}")
+                tod = run_at.time().replace(second=0, microsecond=0)
+                times_of_day = (tod,)
+            except Exception:
+                error_label.update(self.msg.err_invalid_datetime)
+                return
+        elif frequency == ScheduleFrequency.DAILY:
             time_str = self.query_one("#inp-time", Input).value.strip()
             try:
                 times_of_day = parse_times_list(time_str)
@@ -672,6 +735,7 @@ class JobFormModal(ModalScreen[Job | None]):
                 error_label.update(self.msg.err_invalid_time)
                 return
 
+        if frequency in (ScheduleFrequency.DAILY, ScheduleFrequency.ONCE):
             tol_mode_val = str(self.query_one("#sel-tolerance-mode", Select).value)
             tol_mode = ToleranceMode(tol_mode_val)
             if tol_mode == ToleranceMode.UNTIL_HOUR:
@@ -723,6 +787,7 @@ class JobFormModal(ModalScreen[Job | None]):
             times_of_day=times_of_day,
             start_time=start_time,
             end_time=end_time,
+            run_at=run_at,
             tolerance_mode=tol_mode,
             tolerance_value=tol_val,
             frequency=frequency,
@@ -756,8 +821,8 @@ class JobFormModal(ModalScreen[Job | None]):
             target=target,
             action=action,
             command=compiled_command,
-            is_paused=self.job.is_paused if self.job else False,
-            created_at=self.job.created_at if self.job else None,
+            is_paused=False if self.is_clone else (self.job.is_paused if self.job else False),
+            created_at=None if self.is_clone else (self.job.created_at if self.job else None),
             folder=self.job.folder if self.job else None,
         )
         self.dismiss(job)

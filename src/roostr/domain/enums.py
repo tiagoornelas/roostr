@@ -11,6 +11,7 @@ class ScheduleFrequency(StrEnum):
     DAILY = "daily"
     INTERVAL_HOURS = "interval_hours"
     INTERVAL_MINUTES = "interval_minutes"
+    ONCE = "once"
 
 
 class TriggerType(StrEnum):
