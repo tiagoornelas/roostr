@@ -222,3 +222,19 @@ class Messages:
     notify_folder_renamed: str
     notify_folder_deleted: str
     notify_folder_and_jobs_deleted: str
+
+    # One-Time Jobs & Tabs
+    tab_view_recurring: str
+    tab_view_onetime: str
+    section_onetime_scheduled: str
+    section_onetime_executed: str
+    status_done: str
+    freq_opt_once: str
+    lbl_run_date: str
+    lbl_run_time: str
+    lbl_run_at_prop: str
+    lbl_onetime_type: str
+    err_invalid_datetime: str
+    key_switch_tab: str
+    key_clone_job: str
+    modal_title_clone: str

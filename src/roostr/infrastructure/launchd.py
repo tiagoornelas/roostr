@@ -158,6 +158,15 @@ class LaunchdSchedulerAdapter(SchedulerPort):
             plist_data["StartInterval"] = max(60, job.schedule.interval_value * 60)
         elif job.schedule.frequency == ScheduleFrequency.INTERVAL_HOURS:
             plist_data["StartInterval"] = max(60, job.schedule.interval_value * 3600)
+        elif job.schedule.frequency == ScheduleFrequency.ONCE and job.schedule.run_at is not None:
+            plist_data["StartCalendarInterval"] = [
+                {
+                    "Month": job.schedule.run_at.month,
+                    "Day": job.schedule.run_at.day,
+                    "Hour": job.schedule.run_at.hour,
+                    "Minute": job.schedule.run_at.minute,
+                }
+            ]
         else:
             intervals = []
             for wd in job.schedule.days_of_week:

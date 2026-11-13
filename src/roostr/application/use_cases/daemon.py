@@ -35,6 +35,8 @@ class DaemonSchedulerUseCase:
             return False
 
         # 3. Frequency & idempotency checks
+        if job.schedule.frequency == ScheduleFrequency.ONCE:
+            return not self.storage.has_terminal_execution(job.id)
         if job.schedule.frequency == ScheduleFrequency.DAILY:
             if len(job.schedule.times_of_day) <= 1:
                 if self.storage.has_succeeded_on_date(job.id, now.date()):
@@ -130,6 +132,18 @@ def calculate_next_job_run(job: Job, now: datetime, storage: JobRepositoryPort) 
         return None
 
     sched = job.schedule
+    if sched.frequency == ScheduleFrequency.ONCE:
+        if sched.run_at is None or storage.has_terminal_execution(job.id):
+            return None
+        if sched.run_at > now:
+            return sched.run_at + timedelta(seconds=2)
+        if sched.is_within_window(now):
+            sec_to_next = 60 - now.second
+            if sec_to_next <= 0:
+                sec_to_next = 60
+            return now + timedelta(seconds=sec_to_next + 2)
+        return None
+
     if not sched.days_of_week:
         return None
 

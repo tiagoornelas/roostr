@@ -2,7 +2,7 @@ import re
 import shlex
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from roostr.domain.enums import (
     ActionType,
@@ -123,9 +123,20 @@ def parse_times_list(s: str) -> tuple[time, ...]:
     return tuple(times)
 
 
+def parse_datetime_string(s: str) -> datetime:
+    """Parse ISO-like datetime strings such as '2026-11-15 14:30' or '2026-11-15T14:30'."""
+    clean = s.strip()
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(clean, fmt)
+        except ValueError:
+            pass
+    return datetime.fromisoformat(clean)
+
+
 @dataclass(slots=True)
 class SchedulePolicy:
-    days_of_week: tuple[int, ...]  # 0=Monday ... 6=Sunday
+    days_of_week: tuple[int, ...] = ()  # 0=Monday ... 6=Sunday
     time_of_day: time = time(8, 0)
     tolerance_mode: ToleranceMode = ToleranceMode.EXACT
     tolerance_value: int = 0  # until_hour (e.g. 12) or window_hours (e.g. 4)
@@ -134,17 +145,32 @@ class SchedulePolicy:
     times_of_day: tuple[time, ...] = ()
     start_time: time | None = None  # First call / start of active window (optional)
     end_time: time | None = None  # Last call / end of active window (optional)
+    run_at: datetime | None = None  # Target datetime for ScheduleFrequency.ONCE
 
     def __post_init__(self) -> None:
-        if not self.times_of_day:
+        if self.frequency == ScheduleFrequency.ONCE:
+            if self.run_at is None:
+                raise ValueError("run_at is required for one-time schedules")
+            object.__setattr__(self, "time_of_day", self.run_at.time().replace(second=0, microsecond=0))
+            object.__setattr__(self, "times_of_day", (self.time_of_day,))
+        elif not self.times_of_day:
             object.__setattr__(self, "times_of_day", (self.time_of_day,))
         elif self.time_of_day == time(8, 0) and self.times_of_day:
             object.__setattr__(self, "time_of_day", self.times_of_day[0])
 
+    @property
+    def is_one_time(self) -> bool:
+        return self.frequency == ScheduleFrequency.ONCE
+
     def is_active_on_weekday(self, weekday: int) -> bool:
+        if self.frequency == ScheduleFrequency.ONCE:
+            return True
         return weekday in self.days_of_week
 
     def is_within_window(self, dt: datetime) -> bool:
+        if self.frequency == ScheduleFrequency.ONCE:
+            return self._is_within_once_window(dt)
+
         if self.frequency in (ScheduleFrequency.INTERVAL_HOURS, ScheduleFrequency.INTERVAL_MINUTES):
             cur_t = dt.time()
             if self.start_time and cur_t < self.start_time:
@@ -154,6 +180,26 @@ class SchedulePolicy:
             return True
 
         return self.get_active_time_slot(dt) is not None
+
+    def _is_within_once_window(self, dt: datetime) -> bool:
+        assert self.run_at is not None
+        target = self.run_at.replace(second=0, microsecond=0)
+        current = dt.replace(second=0, microsecond=0)
+
+        if self.tolerance_mode == ToleranceMode.EXACT:
+            return abs((current - target).total_seconds()) <= 60
+
+        if self.tolerance_mode == ToleranceMode.UNTIL_HOUR:
+            end_dt = datetime.combine(target.date(), time(0, 0)) + timedelta(hours=self.tolerance_value)
+            if end_dt <= target:
+                end_dt = target + timedelta(hours=1)
+            return target <= dt < end_dt
+
+        if self.tolerance_mode == ToleranceMode.WINDOW_HOURS:
+            end_dt = target + timedelta(hours=self.tolerance_value)
+            return target <= dt < end_dt
+
+        return False
 
     def get_active_time_slot(self, dt: datetime) -> time | None:
         for tod in self.times_of_day:
@@ -425,6 +471,7 @@ class Job:
                 "times_of_day": [t.strftime("%H:%M") for t in self.schedule.times_of_day],
                 "start_time": self.schedule.start_time.strftime("%H:%M") if self.schedule.start_time else None,
                 "end_time": self.schedule.end_time.strftime("%H:%M") if self.schedule.end_time else None,
+                "run_at": self.schedule.run_at.isoformat() if self.schedule.run_at else None,
                 "tolerance_mode": self.schedule.tolerance_mode.value,
                 "tolerance_value": self.schedule.tolerance_value,
             },
