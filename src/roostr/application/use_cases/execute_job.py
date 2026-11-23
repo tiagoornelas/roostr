@@ -88,6 +88,7 @@ class ExecuteJobUseCase:
                         )
 
         # 4. Dispatch via target dispatcher
+        last_exec_before = self.storage.get_last_execution(job.id)
         success, message = self.dispatcher.dispatch(job, current_dt)
         status = ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILED
 
@@ -102,9 +103,16 @@ class ExecuteJobUseCase:
         self.storage.record_execution(record)
 
         if not success:
-            self.notifier.notify(
-                title=f"Roostr — {job.name}",
-                message=f"Execution failed: {message}",
+            already_notified_failure = (
+                not force
+                and last_exec_before is not None
+                and last_exec_before.status == ExecutionStatus.FAILED
+                and last_exec_before.timestamp.date() == current_dt.date()
             )
+            if not already_notified_failure:
+                self.notifier.notify(
+                    title=f"Roostr — {job.name}",
+                    message=f"Execution failed: {message}",
+                )
 
         return status, message

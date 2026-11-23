@@ -122,6 +122,8 @@ class Messages:
     lbl_herdr_space_hint: str
     lbl_tab_template: str
     lbl_tab_template_hint: str
+    lbl_herdr_reuse_tab: str
+    lbl_herdr_reuse_tab_hint: str
     lbl_frequency: str
     freq_opt_daily: str
     freq_opt_interval_hours: str

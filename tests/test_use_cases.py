@@ -293,6 +293,11 @@ def test_execute_job_background_notifier_on_failure(storage):
         notifier_mock.notify.call_args
     )
 
+    # Consecutive scheduled failure on the same day suppresses duplicate notifications
+    status2, _ = use_case.execute(bg_job.id, now=datetime(2026, 11, 9, 9, 1))
+    assert status2 == ExecutionStatus.FAILED
+    assert notifier_mock.notify.call_count == 1
+
 
 def test_manage_jobs_toggle_pause_nonexistent_and_delete_folder(storage):
     use_case = ManageJobsUseCase(storage=storage)

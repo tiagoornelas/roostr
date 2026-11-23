@@ -241,6 +241,7 @@ class HerdrTargetConfig:
     space: str
     tab_template: str = "{job.name} {DD}/{MM}"
     keep_open: bool = True
+    reuse_open_tab: bool = False
     target_type: TargetType = field(default=TargetType.HERDR, init=False)
 
 
@@ -444,6 +445,7 @@ class Job:
             target_info["space"] = self.target.space
             target_info["tab_template"] = self.target.tab_template
             target_info["keep_open"] = self.target.keep_open
+            target_info["reuse_open_tab"] = self.target.reuse_open_tab
         elif isinstance(self.target, BackgroundTargetConfig):
             target_info["notify_on_complete"] = self.target.notify_on_complete
 

@@ -471,6 +471,7 @@ class SQLiteStorage:
                 "space": target.space,
                 "tab_template": target.tab_template,
                 "keep_open": target.keep_open,
+                "reuse_open_tab": target.reuse_open_tab,
             }
         if isinstance(target, BackgroundTargetConfig):
             return {"notify_on_complete": target.notify_on_complete}
@@ -488,6 +489,7 @@ class SQLiteStorage:
                 space=config_dict.get("space", ""),
                 tab_template=config_dict.get("tab_template", "{job.name} {DD}/{MM}"),
                 keep_open=bool(config_dict.get("keep_open", True)),
+                reuse_open_tab=bool(config_dict.get("reuse_open_tab", False)),
             )
         if target_type == TargetType.BACKGROUND:
             return BackgroundTargetConfig(

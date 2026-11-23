@@ -464,3 +464,273 @@ def test_targets_handle_cwd_with_spaces(tmp_path):
     call_args = popen_mock.call_args[0][0]
     zsh_cmd = call_args[2]
     assert f"cd '{spaced_cwd}' && echo hello" in zsh_cmd
+
+
+def _make_reuse_herdr_job(tmp_path, *, reuse: bool = True, action=None):
+    from roostr.domain.enums import AIHarness
+    from roostr.domain.models import AgentAction
+
+    return Job(
+        id="coord-morning",
+        name="Coordenador da Manhã",
+        cwd=str(tmp_path),
+        action=action or AgentAction(harness=AIHarness.CLAUDE, prompt="- Check PRs"),
+        schedule=SchedulePolicy((0,), time(8, 0)),
+        target=HerdrTargetConfig(
+            space="Coordenador CJ",
+            tab_template="{job.name} {DD}/{MM}",
+            reuse_open_tab=reuse,
+        ),
+    )
+
+
+def test_herdr_reuse_open_tab_sends_to_idle_and_done_agent(tmp_path):
+    import json
+
+    dt = datetime(2026, 11, 23, 8, 5, 0)
+    for agent_state in ("idle", "done"):
+        calls = []
+        job = _make_reuse_herdr_job(tmp_path, reuse=True)
+
+        def mock_runner(cmd, **kwargs):
+            calls.append(cmd)
+            res = MagicMock()
+            res.returncode = 0
+            res.stderr = ""
+            if cmd == ["hc", "server", "status"]:
+                return res
+            if cmd == ["herdr-app", "ls"]:
+                res.stdout = json.dumps(
+                    {
+                        "spaces": [
+                            {
+                                "id": "sp1",
+                                "name": "Coordenador CJ",
+                                "tabs": [
+                                    {
+                                        "id": "tb1",
+                                        "name": "Coordenador da Manhã 23/11",
+                                        "terminals": [
+                                            {"terminal": "t19g", "status": "idle", "app": "claude-code"},
+                                            {"terminal": "t20h", "status": "idle", "app": "claude-code"},
+                                        ],
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                )
+                return res
+            if cmd[:3] == ["hc", "get", "--json"]:
+                res.stdout = json.dumps({"address": "t19g", "state": "live", "status": {"state": agent_state}})
+                return res
+            if cmd[:3] == ["hc", "send", "--json"]:
+                res.stdout = json.dumps({"ok": True})
+                return res
+            return res
+
+        adapter = HerdrTargetAdapter(cmd_runner=mock_runner, sleep_fn=lambda _: None)
+        success, msg = adapter.launch(job, dt)
+
+        assert success is True
+        assert "Sent to terminal t19g in tab tb1 ('Coordenador da Manhã 23/11')" in msg
+        assert "first of 2 terminals" in msg
+        assert not any(c[:2] == ["hc", "run"] for c in calls)
+        send_calls = [c for c in calls if c[:2] == ["hc", "send"]]
+        assert len(send_calls) == 1
+        if agent_state == "idle":
+            assert send_calls[0] == ["hc", "send", "--json", "--if", "idle", "--", "t19g", "- Check PRs"]
+        else:
+            assert send_calls[0] == ["hc", "send", "--json", "--", "t19g", "- Check PRs"]
+
+
+def test_herdr_reuse_open_tab_command_action_and_no_match_cases(tmp_path):
+    import json
+
+    from roostr.domain.models import CommandAction
+
+    dt = datetime(2026, 11, 23, 8, 5, 0)
+
+    # 1. CommandAction sends job.command
+    calls = []
+    cmd_job = _make_reuse_herdr_job(tmp_path, reuse=True, action=CommandAction(command="pytest -q"))
+
+    def mock_runner_cmd(cmd, **kwargs):
+        calls.append(cmd)
+        res = MagicMock(returncode=0, stderr="", stdout="")
+        if cmd == ["herdr-app", "ls"]:
+            res.stdout = json.dumps(
+                {
+                    "spaces": [
+                        {
+                            "id": "sp1",
+                            "name": "Coordenador CJ",
+                            "tabs": [
+                                {
+                                    "id": "tb1",
+                                    "name": "Coordenador da Manhã 23/11",
+                                    "terminals": [{"terminal": "t19g"}],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+        elif cmd[:3] == ["hc", "get", "--json"]:
+            res.stdout = json.dumps({"state": "live", "status": {"state": "idle"}})
+        elif cmd[:3] == ["hc", "send", "--json"]:
+            res.stdout = json.dumps({"ok": True})
+        return res
+
+    adapter = HerdrTargetAdapter(cmd_runner=mock_runner_cmd, sleep_fn=lambda _: None)
+    success, _ = adapter.launch(cmd_job, dt)
+    assert success is True
+    send_calls = [c for c in calls if c[:2] == ["hc", "send"]]
+    assert send_calls == [["hc", "send", "--json", "--if", "idle", "--", "t19g", "pytest -q"]]
+
+    # 2. Match in another space or different tab name -> opens new tab via hc run
+    calls.clear()
+    job = _make_reuse_herdr_job(tmp_path, reuse=True)
+
+    def mock_runner_nomatch(cmd, **kwargs):
+        calls.append(cmd)
+        res = MagicMock(returncode=0, stderr="", stdout="")
+        if cmd == ["herdr-app", "ls"]:
+            res.stdout = json.dumps(
+                {
+                    "spaces": [
+                        {
+                            "id": "sp_other",
+                            "name": "Other Space",
+                            "tabs": [
+                                {
+                                    "id": "tb_other",
+                                    "name": "Coordenador da Manhã 23/11",
+                                    "terminals": [{"terminal": "t1"}],
+                                }
+                            ],
+                        },
+                        {
+                            "id": "sp1",
+                            "name": "Coordenador CJ",
+                            "tabs": [
+                                {
+                                    "id": "tb_old",
+                                    "name": "Coordenador da Manhã 22/11",
+                                    "terminals": [{"terminal": "t2"}],
+                                }
+                            ],
+                        },
+                    ]
+                }
+            )
+        elif cmd[:2] == ["hc", "run"]:
+            res.stdout = json.dumps({"terminal": "t_new"})
+        return res
+
+    adapter_nomatch = HerdrTargetAdapter(cmd_runner=mock_runner_nomatch, sleep_fn=lambda _: None)
+    success, _ = adapter_nomatch.launch(job, dt)
+    assert success is True
+    assert any(c[:2] == ["hc", "run"] for c in calls)
+    assert not any(c[:2] == ["hc", "send"] for c in calls)
+
+
+def test_herdr_reuse_open_tab_failure_paths_never_open_new_tab(tmp_path):
+    import json
+    import subprocess
+
+    dt = datetime(2026, 11, 23, 8, 5, 0)
+    job = _make_reuse_herdr_job(tmp_path, reuse=True)
+
+    ls_match = json.dumps(
+        {
+            "spaces": [
+                {
+                    "id": "sp1",
+                    "name": "Coordenador CJ",
+                    "tabs": [
+                        {
+                            "id": "tb1",
+                            "name": "Coordenador da Manhã 23/11",
+                            "terminals": [{"terminal": "t19g"}],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    # 1. herdr-app ls fails -> (False, reason), no hc run
+    calls = []
+
+    def fail_ls(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == ["herdr-app", "ls"]:
+            return MagicMock(returncode=1, stderr="app closed", stdout="")
+        return MagicMock(returncode=0, stderr="", stdout="")
+
+    ok, msg = HerdrTargetAdapter(cmd_runner=fail_ls, sleep_fn=lambda _: None).launch(job, dt)
+    assert ok is False
+    assert "Failed to list Herdr spaces" in msg
+    assert not any(c[:2] == ["hc", "run"] for c in calls)
+
+    # 2. Agent is working / blocked / plain shell (no status) -> (False, reason), no hc run
+    for get_payload, expected in [
+        ({"state": "live", "status": {"state": "working"}}, "working"),
+        ({"state": "live", "status": {"state": "blocked", "kind": "permission"}}, "blocked (permission)"),
+        ({"state": "live", "status": None}, "no active agent status"),
+    ]:
+        calls.clear()
+
+        def busy_runner(cmd, payload=get_payload, **kwargs):
+            calls.append(cmd)
+            if cmd == ["herdr-app", "ls"]:
+                return MagicMock(returncode=0, stderr="", stdout=ls_match)
+            if cmd[:3] == ["hc", "get", "--json"]:
+                return MagicMock(returncode=0, stderr="", stdout=json.dumps(payload))
+            return MagicMock(returncode=0, stderr="", stdout="")
+
+        ok, msg = HerdrTargetAdapter(cmd_runner=busy_runner, sleep_fn=lambda _: None).launch(job, dt)
+        assert ok is False
+        assert expected in msg
+        assert not any(c[:2] == ["hc", "run"] for c in calls)
+        assert not any(c[:2] == ["hc", "send"] for c in calls)
+
+    # 3. hc send returns JSON error or times out -> (False, reason), no hc run
+    calls.clear()
+
+    def send_err_runner(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == ["herdr-app", "ls"]:
+            return MagicMock(returncode=0, stderr="", stdout=ls_match)
+        if cmd[:3] == ["hc", "get", "--json"]:
+            return MagicMock(returncode=0, stderr="", stdout=json.dumps({"state": "live", "status": {"state": "idle"}}))
+        if cmd[:3] == ["hc", "send", "--json"]:
+            return MagicMock(
+                returncode=10,
+                stderr="",
+                stdout=json.dumps({"error": {"kind": "status_mismatch", "message": "t19g is working, not idle"}}),
+            )
+        return MagicMock(returncode=0, stderr="", stdout="")
+
+    ok, msg = HerdrTargetAdapter(cmd_runner=send_err_runner, sleep_fn=lambda _: None).launch(job, dt)
+    assert ok is False
+    assert "t19g is working, not idle" in msg
+    assert not any(c[:2] == ["hc", "run"] for c in calls)
+
+    calls.clear()
+
+    def send_timeout_runner(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == ["herdr-app", "ls"]:
+            return MagicMock(returncode=0, stderr="", stdout=ls_match)
+        if cmd[:3] == ["hc", "get", "--json"]:
+            return MagicMock(returncode=0, stderr="", stdout=json.dumps({"state": "live", "status": {"state": "idle"}}))
+        if cmd[:3] == ["hc", "send", "--json"]:
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=10)
+        return MagicMock(returncode=0, stderr="", stdout="")
+
+    ok, msg = HerdrTargetAdapter(cmd_runner=send_timeout_runner, sleep_fn=lambda _: None).launch(job, dt)
+    assert ok is False
+    assert "Timed out waiting to send to terminal t19g" in msg
+    assert not any(c[:2] == ["hc", "run"] for c in calls)

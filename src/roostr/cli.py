@@ -363,6 +363,7 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
         click.echo(f"  Space:      {job.target.space}")
         click.echo(f"  Tab Name:   {job.target.tab_template}")
         click.echo(f"  Keep Open:  {job.target.keep_open}")
+        click.echo(f"  Reuse Tab:  {job.target.reuse_open_tab}")
     elif isinstance(job.target, TerminalTargetConfig):
         click.echo(f"  App:        {job.target.app.value}")
         click.echo(f"  Keep Open:  {job.target.keep_open}")
@@ -420,6 +421,11 @@ def job_show(ctx: click.Context, job_id: str, json_output: bool, db: Path | None
 @click.option("--space", default="Roostr", help="Herdr workspace space name (default: Roostr).")
 @click.option("--tab-template", default="{job.name} {DD}/{MM}", help="Herdr tab template.")
 @click.option(
+    "--reuse-open-tab/--no-reuse-open-tab",
+    default=False,
+    help="Reuse an existing Herdr tab with the same space and resolved tab name if idle (default template includes {DD}/{MM}, so it reuses only on the same day).",
+)
+@click.option(
     "--terminal-app",
     type=click.Choice(["auto", "terminal", "ghostty", "iterm2", "kitty"], case_sensitive=False),
     default="auto",
@@ -452,6 +458,7 @@ def job_create(
     end_time: str | None,
     space: str,
     tab_template: str,
+    reuse_open_tab: bool,
     terminal_app: str,
     keep_open: bool,
     notify: bool,
@@ -520,7 +527,12 @@ def job_create(
     # Resolve Target
     target_type = TargetType(target.lower())
     if target_type == TargetType.HERDR:
-        target_cfg = HerdrTargetConfig(space=space, tab_template=tab_template, keep_open=keep_open)
+        target_cfg = HerdrTargetConfig(
+            space=space,
+            tab_template=tab_template,
+            keep_open=keep_open,
+            reuse_open_tab=reuse_open_tab,
+        )
     elif target_type == TargetType.TERMINAL:
         target_cfg = TerminalTargetConfig(app=TerminalApp(terminal_app.lower()), keep_open=keep_open)
     else:
@@ -584,6 +596,11 @@ def job_create(
 @click.option("--space", default=None, help="Updated Herdr space.")
 @click.option("--tab-template", default=None, help="Updated Herdr tab template.")
 @click.option(
+    "--reuse-open-tab/--no-reuse-open-tab",
+    default=None,
+    help="Reuse an existing Herdr tab with the same space and resolved tab name.",
+)
+@click.option(
     "--terminal-app",
     type=click.Choice(["auto", "terminal", "ghostty", "iterm2", "kitty"], case_sensitive=False),
     default=None,
@@ -613,6 +630,7 @@ def job_update(
     tolerance_value: int | None,
     space: str | None,
     tab_template: str | None,
+    reuse_open_tab: bool | None,
     terminal_app: str | None,
     keep_open: bool | None,
     notify: bool | None,
@@ -661,6 +679,7 @@ def job_update(
                 space=space or "Roostr",
                 tab_template=tab_template or "{job.name} {DD}/{MM}",
                 keep_open=keep_open if keep_open is not None else True,
+                reuse_open_tab=reuse_open_tab if reuse_open_tab is not None else False,
             )
         elif t_type == TargetType.TERMINAL:
             job.target = TerminalTargetConfig(
@@ -680,6 +699,8 @@ def job_update(
                 job.target.tab_template = tab_template
             if keep_open is not None:
                 job.target.keep_open = keep_open
+            if reuse_open_tab is not None:
+                job.target.reuse_open_tab = reuse_open_tab
         elif isinstance(job.target, TerminalTargetConfig):
             if terminal_app is not None:
                 job.target.app = TerminalApp(terminal_app.lower())

@@ -1057,3 +1057,43 @@ async def test_app_folder_edit_and_delete_actions(storage):
 
         assert "ToPurge" not in storage.list_folders()
         assert storage.get_job("j-purge") is None
+
+
+@pytest.mark.asyncio
+async def test_form_modal_herdr_reuse_open_tab_create_and_edit(storage):
+    from textual.widgets import Checkbox, Input, TextArea
+
+    from roostr.domain.models import HerdrTargetConfig
+    from roostr.ui.screens.form_modal import JobFormModal
+
+    app = RoostrApp(storage=storage, locale="en")
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+
+        modal = app.screen
+        modal.query_one("#inp-name", Input).value = "Reuse UI Job"
+        modal.query_one("#inp-cwd", Input).value = "/tmp"
+        modal.query_one("#inp-prompt", TextArea).text = "Check open PRs"
+        chk = modal.query_one("#chk-herdr-reuse-tab", Checkbox)
+        assert chk.value is False
+        chk.value = True
+
+        await pilot.click("#btn-save")
+        await pilot.pause()
+
+        saved = storage.get_job("reuse-ui-job")
+        assert saved is not None
+        assert isinstance(saved.target, HerdrTargetConfig)
+        assert saved.target.reuse_open_tab is True
+
+        # Re-open in edit mode and confirm checkbox is restored
+        app.dashboard_screen.refresh_jobs()
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert isinstance(app.screen, JobFormModal)
+        assert app.screen.query_one("#chk-herdr-reuse-tab", Checkbox).value is True
