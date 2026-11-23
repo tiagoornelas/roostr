@@ -83,10 +83,26 @@ def test_save_and_retrieve_herdr_job(storage):
     assert isinstance(fetched_no_keep.target, HerdrTargetConfig)
     assert fetched_no_keep.target.keep_open is False
 
-    # Backward compatibility: JSON dict without keep_open defaults to True
+    # Backward compatibility: JSON dict without keep_open / reuse_open_tab defaults
     legacy_target = storage._dict_to_target("herdr", {"space": "OldSpace", "tab_template": "OldTab"})
     assert isinstance(legacy_target, HerdrTargetConfig)
     assert legacy_target.keep_open is True
+    assert legacy_target.reuse_open_tab is False
+
+    # Round-trip reuse_open_tab=True
+    job_reuse = Job(
+        id="reuse-job",
+        name="Reuse Job",
+        cwd="/tmp",
+        command="claude '/audit'",
+        schedule=job.schedule,
+        target=HerdrTargetConfig(space="Roostr", tab_template="Audit", reuse_open_tab=True),
+    )
+    storage.save_job(job_reuse)
+    fetched_reuse = storage.get_job("reuse-job")
+    assert fetched_reuse is not None
+    assert isinstance(fetched_reuse.target, HerdrTargetConfig)
+    assert fetched_reuse.target.reuse_open_tab is True
 
 
 def test_save_and_retrieve_agent_action_job(storage):

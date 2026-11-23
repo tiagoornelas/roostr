@@ -566,6 +566,18 @@ class JobFormModal(ModalScreen[Job | None]):
                             )
                             yield Label(self.msg.lbl_tab_template_hint, classes="field-hint")
 
+                            herdr_reuse = (
+                                self.job.target.reuse_open_tab
+                                if isinstance(self.job and self.job.target, HerdrTargetConfig)
+                                else False
+                            )
+                            yield Checkbox(
+                                self.msg.lbl_herdr_reuse_tab,
+                                value=herdr_reuse,
+                                id="chk-herdr-reuse-tab",
+                            )
+                            yield Label(self.msg.lbl_herdr_reuse_tab_hint, classes="field-hint")
+
                         with Vertical(id="target-background-box", classes="target-box"):
                             yield Label(self.msg.lbl_bg_log, classes="field-label")
                             bg_log = (
@@ -804,10 +816,16 @@ class JobFormModal(ModalScreen[Job | None]):
         elif target_type == "herdr":
             space = self.query_one("#inp-herdr-space", Input).value.strip() or "Roostr"
             tab_template = self.query_one("#inp-herdr-tab", Input).value.strip() or "{job.name} {DD}/{MM}"
+            reuse_open_tab = self.query_one("#chk-herdr-reuse-tab", Checkbox).value
             keep_open = (
                 self.job.target.keep_open if (self.job and isinstance(self.job.target, HerdrTargetConfig)) else True
             )
-            target = HerdrTargetConfig(space=space, tab_template=tab_template, keep_open=keep_open)
+            target = HerdrTargetConfig(
+                space=space,
+                tab_template=tab_template,
+                keep_open=keep_open,
+                reuse_open_tab=reuse_open_tab,
+            )
         elif target_type == "background":
             target = BackgroundTargetConfig(notify_on_complete=True)
         else:

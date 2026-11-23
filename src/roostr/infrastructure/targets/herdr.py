@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from roostr.application.ports import ExecutionTargetPort
-from roostr.domain.models import HerdrTargetConfig, Job
+from roostr.domain.models import AgentAction, HerdrTargetConfig, Job
 
 ROOSTR_SVG_ICON = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -113,7 +113,7 @@ class HerdrTargetAdapter(ExecutionTargetPort):
         except Exception:
             return False
 
-    def get_space_id(self, space_name: str) -> str | None:
+    def _list_spaces(self) -> tuple[list[dict] | None, str | None]:
         try:
             res = self._cmd_runner(
                 ["herdr-app", "ls"],
@@ -122,14 +122,28 @@ class HerdrTargetAdapter(ExecutionTargetPort):
                 timeout=5,
                 check=False,
             )
-            if res.returncode != 0 or not res.stdout.strip():
-                return None
+            if res.returncode != 0:
+                detail = res.stderr.strip() or res.stdout.strip() or f"exit code {res.returncode}"
+                return None, f"Failed to list Herdr spaces: {detail}"
+            if not res.stdout.strip():
+                return None, "Failed to list Herdr spaces: empty output"
             data = json.loads(res.stdout)
-            for space in data.get("spaces", []):
-                if space.get("name") == space_name:
-                    return space.get("id")
-        except Exception:
-            pass
+            spaces = data.get("spaces", [])
+            if not isinstance(spaces, list):
+                return None, "Failed to list Herdr spaces: invalid response shape"
+            return spaces, None
+        except subprocess.TimeoutExpired:
+            return None, "Timed out listing Herdr spaces"
+        except Exception as e:
+            return None, f"Error listing Herdr spaces: {e}"
+
+    def get_space_id(self, space_name: str) -> str | None:
+        spaces, _ = self._list_spaces()
+        if not spaces:
+            return None
+        for space in spaces:
+            if space.get("name") == space_name:
+                return space.get("id")
         return None
 
     def get_or_create_space_id(self, space_name: str, cwd: str) -> tuple[str | None, str | None]:
@@ -153,6 +167,117 @@ class HerdrTargetAdapter(ExecutionTargetPort):
         except Exception as e:
             return None, f"Error calling herdr-app to create space: {e}"
 
+    def _find_matching_tab(self, spaces: list[dict], space_name: str, tab_label: str) -> tuple[str | None, dict | None]:
+        for space in spaces:
+            if space.get("name") == space_name:
+                space_id = space.get("id")
+                for tab in space.get("tabs", []):
+                    if tab.get("name") == tab_label:
+                        return space_id, tab
+                return space_id, None
+        return None, None
+
+    def _send_to_existing_tab(self, job: Job, tab: dict, tab_label: str) -> tuple[bool, str]:
+        tab_id = tab.get("id") or "unknown"
+        terminals = tab.get("terminals") or []
+        if not terminals:
+            return False, f"Matching tab {tab_id} ('{tab_label}') has no terminals"
+
+        first_term = terminals[0]
+        term_id = first_term.get("terminal") or first_term.get("name")
+        if not term_id:
+            return False, f"Matching tab {tab_id} ('{tab_label}') has no usable terminal"
+
+        # Check live terminal status via hc get: finished agent turns report "done",
+        # which `hc send --if idle` rejects, while plain shells have no status.
+        try:
+            get_res = self._cmd_runner(
+                ["hc", "get", "--json", term_id],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"Timed out checking terminal {term_id} status"
+        except Exception as e:
+            return False, f"Error checking terminal {term_id} status: {e}"
+
+        get_data: dict = {}
+        if get_res.stdout and get_res.stdout.strip():
+            try:
+                parsed = json.loads(get_res.stdout)
+                if isinstance(parsed, dict):
+                    get_data = parsed
+            except Exception:
+                pass
+
+        if get_res.returncode != 0 or "error" in get_data:
+            err_obj = get_data.get("error") if isinstance(get_data.get("error"), dict) else {}
+            reason = (
+                err_obj.get("message")
+                or get_res.stderr.strip()
+                or get_res.stdout.strip()
+                or f"exit {get_res.returncode}"
+            )
+            return False, f"Cannot send to terminal {term_id}: {reason}"
+
+        if get_data.get("state") != "live":
+            return False, f"Terminal {term_id} is not live (state: {get_data.get('state')})"
+
+        status_obj = get_data.get("status")
+        state_val = status_obj.get("state") if isinstance(status_obj, dict) else None
+        if not state_val:
+            return False, f"Terminal {term_id} has no active agent status"
+        if state_val not in ("idle", "done"):
+            kind = status_obj.get("kind") if isinstance(status_obj, dict) else None
+            detail = f"{state_val} ({kind})" if kind else state_val
+            return False, f"Terminal {term_id} is not ready (status: {detail})"
+
+        text = job.action.prompt if isinstance(job.action, AgentAction) else job.command
+        send_cmd = ["hc", "send", "--json"]
+        if state_val == "idle":
+            send_cmd.extend(["--if", "idle"])
+        send_cmd.extend(["--", term_id, text])
+
+        try:
+            send_res = self._cmd_runner(
+                send_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                False,
+                f"Timed out waiting to send to terminal {term_id} (user may be typing a draft or hc is unresponsive)",
+            )
+        except Exception as e:
+            return False, f"Error calling hc send on terminal {term_id}: {e}"
+
+        send_data: dict = {}
+        if send_res.stdout and send_res.stdout.strip():
+            try:
+                parsed = json.loads(send_res.stdout)
+                if isinstance(parsed, dict):
+                    send_data = parsed
+            except Exception:
+                pass
+
+        if send_res.returncode != 0 or "error" in send_data:
+            err_obj = send_data.get("error") if isinstance(send_data.get("error"), dict) else {}
+            reason = (
+                err_obj.get("message")
+                or send_res.stderr.strip()
+                or send_res.stdout.strip()
+                or f"exit {send_res.returncode}"
+            )
+            return False, f"Failed to send to terminal {term_id}: {reason}"
+
+        extra = f" (first of {len(terminals)} terminals)" if len(terminals) > 1 else ""
+        return True, f"Sent to terminal {term_id} in tab {tab_id} ('{tab_label}'){extra}"
+
     def launch(self, job: Job, dt: datetime) -> tuple[bool, str]:
         if not self.is_running():
             return False, "Herdr is not running"
@@ -161,9 +286,21 @@ class HerdrTargetAdapter(ExecutionTargetPort):
             return False, "Job target is not configured for Herdr"
 
         target_space = job.target.space.strip() if job.target.space else "Roostr"
-        space_id, err = self.get_or_create_space_id(target_space, job.cwd)
+        tab_label = job.resolve_herdr_tab_name(dt)
+
+        space_id: str | None = None
+        if job.target.reuse_open_tab:
+            spaces, err = self._list_spaces()
+            if err or spaces is None:
+                return False, err or "Failed to list Herdr spaces"
+            space_id, matching_tab = self._find_matching_tab(spaces, target_space, tab_label)
+            if matching_tab is not None:
+                return self._send_to_existing_tab(job, matching_tab, tab_label)
+
         if not space_id:
-            return False, err or f'Space "{target_space}" could not be created in Herdr'
+            space_id, err = self.get_or_create_space_id(target_space, job.cwd)
+            if not space_id:
+                return False, err or f'Space "{target_space}" could not be created in Herdr'
 
         terminal_name = make_herdr_terminal_name(job.id, dt)
 
@@ -210,7 +347,6 @@ class HerdrTargetAdapter(ExecutionTargetPort):
         except Exception as e:
             return False, f"Error spawning hc process: {e}"
 
-        tab_label = job.resolve_herdr_tab_name(dt)
         tab_id = self._find_tab_id_for_terminal(terminal_name, retries=10)
         if tab_id:
             try:

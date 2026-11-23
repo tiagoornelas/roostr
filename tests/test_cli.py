@@ -332,11 +332,13 @@ def test_cli_job_create_and_show_and_list(tmp_path):
     assert show_data["action"]["prompt"] == "Review pull requests"
     assert show_data["target"]["type"] == "herdr"
     assert show_data["target"]["keep_open"] is True
+    assert show_data["target"]["reuse_open_tab"] is False
 
     # Show job (standard visual format)
     show_res = runner.invoke(main, ["--db", str(db_file), "job", "show", "morning-pr-review"])
     assert show_res.exit_code == 0
     assert "Keep Open:  True" in show_res.output
+    assert "Reuse Tab:  False" in show_res.output
     assert "Morning PR Review (morning-pr-review)" in show_res.output
     assert "Status:       ACTIVE" in show_res.output
 
@@ -426,6 +428,7 @@ def test_cli_job_pause_resume_update_delete(tmp_path):
             "--folder",
             "Security",
             "--no-keep-open",
+            "--reuse-open-tab",
             "--json",
         ],
     )
@@ -435,6 +438,7 @@ def test_cli_job_pause_resume_update_delete(tmp_path):
     assert updated_data["folder"] == "Security"
     assert updated_data["action"]["prompt"] == "Audit security"
     assert updated_data["target"]["keep_open"] is False
+    assert updated_data["target"]["reuse_open_tab"] is True
 
     # Delete with --yes and --json
     del_res = runner.invoke(main, ["--db", str(db_file), "job", "delete", "audit", "--yes", "--json"])

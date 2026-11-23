@@ -1182,7 +1182,8 @@ class DashboardScreen(Screen):
         if isinstance(job.target, TerminalTargetConfig):
             target_str = f"{self.msg.target_opt_terminal} (App: {job.target.app.value})"
         elif isinstance(job.target, HerdrTargetConfig):
-            target_str = f"{self.msg.target_opt_herdr} (Space: '{job.target.space}', Tab: '{job.target.tab_template}')"
+            reuse_suffix = ", Reuse" if job.target.reuse_open_tab else ""
+            target_str = f"{self.msg.target_opt_herdr} (Space: '{job.target.space}', Tab: '{job.target.tab_template}'{reuse_suffix})"
         else:
             target_str = f"{self.msg.target_opt_background} ({self.msg.target_opt_headless})"
 
